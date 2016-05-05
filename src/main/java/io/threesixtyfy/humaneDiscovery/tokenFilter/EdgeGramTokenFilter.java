@@ -61,61 +61,66 @@ public class EdgeGramTokenFilter extends TokenFilter {
 
     @Override
     public final boolean incrementToken() throws IOException {
-        if (curTermBuffer == null) {
-            if (!input.incrementToken()) {
-                return false;
-            } else {
-                curTermCharArray = termAtt.buffer().clone();
-                curTermBuffer = CharBuffer.wrap(curTermCharArray);
-                curTermLength = termAtt.length();
-                curCodePointCount = charUtils.codePointCount(termAtt);
-                curGramSize = minGram;
-                tokStart = offsetAtt.startOffset();
-                tokEnd = offsetAtt.endOffset();
-                savePosIncr += posIncrAtt.getPositionIncrement();
-                savePosLen = posLenAtt.getPositionLength();
-            }
-        }
-
-        if (curCodePointCount < minGram) {
-            // simple pass on when text size is less than minGram
-            curTermBuffer = null;
-            return true;
-        } else if (curCodePointCount >= minGram && curGramSize <= maxGram) {         // if we have hit the end of our n-gram size range, quit
-            if (curGramSize <= curCodePointCount) { // if the remaining input is too short, we can't generate any n-grams
-                // grab gramSize chars from front or back
-                clearAttributes();
-                offsetAtt.setOffset(tokStart, tokEnd);
-                // first ngram gets increment, others don't
-                if (curGramSize == minGram) {
-                    posIncrAtt.setPositionIncrement(savePosIncr);
-                    savePosIncr = 0;
+        while (true) {
+            if (curTermBuffer == null) {
+                if (!input.incrementToken()) {
+                    return false;
                 } else {
-                    posIncrAtt.setPositionIncrement(0);
+                    curTermCharArray = termAtt.buffer().clone();
+                    curTermBuffer = CharBuffer.wrap(curTermCharArray);
+                    curTermLength = termAtt.length();
+                    curCodePointCount = charUtils.codePointCount(termAtt);
+                    curGramSize = minGram;
+                    tokStart = offsetAtt.startOffset();
+                    tokEnd = offsetAtt.endOffset();
+                    savePosIncr += posIncrAtt.getPositionIncrement();
+                    savePosLen = posLenAtt.getPositionLength();
                 }
-                posLenAtt.setPositionLength(savePosLen);
-                final int charLength = Character.offsetByCodePoints(curTermCharArray, 0, curTermLength, 0, curGramSize);
-
-                if (curGramSize < curCodePointCount) {
-                    termAtt.setEmpty().append("e#");
-                }
-
-                termAtt.append(curTermBuffer, 0, charLength);
-
-                curGramSize++;
-                return true;
             }
-        }
 
+            if (curCodePointCount < minGram) {
+                // simple pass on when text size is less than minGram
+                this.resetState();
+                return true;
+            } else if (curCodePointCount >= minGram && curGramSize <= maxGram) {         // if we have hit the end of our n-gram size range, quit
+                if (curGramSize <= curCodePointCount) { // if the remaining input is too short, we can't generate any n-grams
+                    // grab gramSize chars from front or back
+                    clearAttributes();
+                    offsetAtt.setOffset(tokStart, tokEnd);
+                    // first ngram gets increment, others don't
+                    if (curGramSize == minGram) {
+                        posIncrAtt.setPositionIncrement(savePosIncr);
+                        savePosIncr = 0;
+                    } else {
+                        posIncrAtt.setPositionIncrement(0);
+                    }
+                    posLenAtt.setPositionLength(savePosLen);
+                    final int charLength = Character.offsetByCodePoints(curTermCharArray, 0, curTermLength, 0, curGramSize);
+
+                    if (curGramSize < curCodePointCount) {
+                        termAtt.setEmpty().append("e#");
+                    }
+
+                    termAtt.append(curTermBuffer, 0, charLength);
+
+                    curGramSize++;
+                    return true;
+                }
+            }
+
+            this.resetState();
+        }
+    }
+
+    private void resetState() {
         curTermBuffer = null;
-        return false;
+        savePosIncr = 0;
     }
 
     @Override
     public void reset() throws IOException {
         super.reset();
-        curTermBuffer = null;
-        savePosIncr = 0;
+
     }
 
 }
