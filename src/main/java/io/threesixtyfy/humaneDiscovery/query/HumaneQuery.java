@@ -251,7 +251,7 @@ public class HumaneQuery extends Query {
 
                 // nestedPathContext.parentObjectMapper = parseContext.nestedScope().nextLevel(nestedPathContext.nestedObjectMapper);
 
-                // for multiple hierarchy do above in recursive manner
+                // todo: for multiple hierarchy do above in recursive manner
                 // reset level
                 // parseContext.nestedScope().previousLevel();
 
@@ -284,15 +284,15 @@ public class HumaneQuery extends Query {
         }
     }
 
-    protected Query multiFieldQuery(QueryField[] queryFields, String text, boolean phrase) {
+    protected Query multiFieldQuery(QueryField[] queryFields, String text, boolean phrase, int numTokens) {
         if (queryFields.length == 1) {
-            return this.fieldQuery(queryFields[0], text, phrase);
+            return this.fieldQuery(queryFields[0], text, phrase, numTokens);
         }
 
         List<Query> fieldDisjuncts = new LinkedList<>();
 
         for (QueryField queryField : queryFields) {
-            fieldDisjuncts.add(this.fieldQuery(queryField, text, phrase));
+            fieldDisjuncts.add(this.fieldQuery(queryField, text, phrase, numTokens));
         }
 
         return new DisjunctionMaxQuery(fieldDisjuncts, 1.0f);
@@ -302,10 +302,12 @@ public class HumaneQuery extends Query {
     // edgeGram = 30 % field weight
     // phonetic = 15 % field weight
     // edgeGramPhonetic = 5 % field weight
-    protected Query fieldQuery(QueryField field, String text, boolean phrase) {
+    protected Query fieldQuery(QueryField field, String text, boolean phrase, int numTokens) {
         BooleanQuery.Builder fieldQueryBuilder = new BooleanQuery.Builder();
 
-        if (!field.noFuzzy) {
+        boolean noFuzzy = field.noFuzzy || numTokens == 1 && text.length() <= 3 || numTokens > 1 && text.length() <= 2;
+
+        if (!noFuzzy) {
             fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticAnalyzerNames), 0.15f * field.boost), BooleanClause.Occur.SHOULD);
             fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticEdgeGramAnalyzerNames), 0.05f * field.boost), BooleanClause.Occur.SHOULD);
             fieldQueryBuilder.add(buildQuery(field, StandardSearchAnalyzerName, text, phrase, 0.50f * field.boost), BooleanClause.Occur.SHOULD);
@@ -439,12 +441,12 @@ public class HumaneQuery extends Query {
 
         int numTokens = tokens.length;
 
-        if (tokens.length == 0) {
+        if (numTokens == 0) {
             return null;
         }
 
-        if (tokens.length == 1) {
-            return this.multiFieldQuery(queryFields, tokens[0], false);
+        if (numTokens == 1) {
+            return this.multiFieldQuery(queryFields, tokens[0], false, numTokens);
         }
 
         // query terms
@@ -454,7 +456,7 @@ public class HumaneQuery extends Query {
         for (int i = 0; i < numTokens; i++) {
             String token = tokens[i];
 //            queryTerms[i] = token;
-            queryNodes[i] = this.multiFieldQuery(queryFields, token, false);
+            queryNodes[i] = this.multiFieldQuery(queryFields, token, false, numTokens);
         }
 
 //            for (int j = 0; j < numClauses; j++) {
