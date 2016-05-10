@@ -1,7 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
 public class HumaneQueryOld /*extends Query*/ {
-//    private final ESLogger logger = Loggers.getLogger(HumaneQueryParser.class);
+//    private final ESLogger logger = Loggers.getLogger(DidYouMeanQueryParser.class);
 //
 //    private static final String[] PhoneticFields = {"edgeGram", "phonetic_soundex", "phonetic_dm", "phonetic_bm", "phonetic_edgeGram_soundex", "phonetic_edgeGram_dm", "phonetic_edgeGram_bm"};
 //    private static final String[] PhoneticSingles = {"phonetic_soundex", "phonetic_dm", "phonetic_bm"};
@@ -341,7 +341,7 @@ public class HumaneQueryOld /*extends Query*/ {
 //        QueryBuilder queryBuilder = this.queryBuilder(field, fieldType);
 //
 //        Query booleanQuery = queryBuilder.createBooleanQuery(field, queryText);
-//        logger.info("[HumaneQuery] booleanQuery: {}", booleanQuery instanceof BooleanQuery);
+//        logger.info("[DidYouMeanQuery] booleanQuery: {}", booleanQuery instanceof BooleanQuery);
 //
 //        // TODO: handle scenario when single term and not a boolean query
 //        if (booleanQuery != null && booleanQuery instanceof BooleanQuery) {
@@ -349,7 +349,7 @@ public class HumaneQueryOld /*extends Query*/ {
 //
 //            int numClauses = bq.clauses().size();
 //
-//            logger.info("[HumaneQuery] numClauses: #{}", numClauses);
+//            logger.info("[DidYouMeanQuery] numClauses: #{}", numClauses);
 //
 //            // query terms
 //            Query[] queryNodes = new Query[numClauses];
@@ -424,12 +424,12 @@ public class HumaneQueryOld /*extends Query*/ {
 ////                        continue;
 ////                    }
 ////
-////                    logger.info("[HumaneQuery] looking for synonym: #{}", sb.toString());
+////                    logger.info("[DidYouMeanQuery] looking for synonym: #{}", sb.toString());
 ////
 ////                    // check if there is a synonym for the running terms...
 ////                    String synonym = this.synonyms.get(sb.toString());
 ////                    if (synonym != null) {
-////                        logger.info("[HumaneQuery] got synonym: #{}", synonym);
+////                        logger.info("[DidYouMeanQuery] got synonym: #{}", synonym);
 ////
 ////                        boolean multiWordSynonym = false;
 ////                        if (synonym.indexOf(' ') > 0) {
@@ -491,7 +491,7 @@ public class HumaneQueryOld /*extends Query*/ {
 ////                }
 ////            }
 ////
-////            logger.info("[HumaneQuery] numQueryNodes: #{}", numQueryNodes);
+////            logger.info("[DidYouMeanQuery] numQueryNodes: #{}", numQueryNodes);
 ////
 ////            if (numQueryNodes <= 1) {
 ////                return lastNotNullQueryNode;

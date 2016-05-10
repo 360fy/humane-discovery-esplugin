@@ -4,14 +4,17 @@ import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
 import org.apache.lucene.analysis.util.CharacterUtils;
+import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.io.IOException;
 import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
 
 public class EdgeGramTokenFilter extends TokenFilter {
 
@@ -20,6 +23,8 @@ public class EdgeGramTokenFilter extends TokenFilter {
     private final CharacterUtils charUtils;
     private final int minGram;
     private final int maxGram;
+    private final String prefix;
+    private final boolean payload;
     //    private char[] curTermBuffer;
     private char[] curTermCharArray;
     private CharBuffer curTermBuffer;
@@ -31,10 +36,14 @@ public class EdgeGramTokenFilter extends TokenFilter {
     private int savePosIncr;
     private int savePosLen;
 
+    private String source;
+
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
     private final PositionLengthAttribute posLenAtt = addAttribute(PositionLengthAttribute.class);
+
+    final PayloadAttribute payloadAtt;
 
     /**
      * Creates EdgeNGramTokenFilter that can generate n-grams in the sizes of the given range
@@ -43,7 +52,7 @@ public class EdgeGramTokenFilter extends TokenFilter {
      * @param minGram the smallest n-gram to generate
      * @param maxGram the largest n-gram to generate
      */
-    public EdgeGramTokenFilter(TokenStream input, int minGram, int maxGram) {
+    public EdgeGramTokenFilter(TokenStream input, int minGram, int maxGram, String prefix, boolean payload) {
         super(input);
 
         if (minGram < 1) {
@@ -57,6 +66,14 @@ public class EdgeGramTokenFilter extends TokenFilter {
         this.charUtils = CharacterUtils.getInstance();
         this.minGram = minGram;
         this.maxGram = maxGram;
+        this.prefix = "".equals(prefix) ? null : prefix;
+        this.payload = payload;
+
+        if (payload) {
+            payloadAtt = addAttribute(PayloadAttribute.class);
+        } else {
+            payloadAtt = null;
+        }
     }
 
     @Override
@@ -67,6 +84,7 @@ public class EdgeGramTokenFilter extends TokenFilter {
                     return false;
                 } else {
                     curTermCharArray = termAtt.buffer().clone();
+                    source = termAtt.toString();
                     curTermBuffer = CharBuffer.wrap(curTermCharArray);
                     curTermLength = termAtt.length();
                     curCodePointCount = charUtils.codePointCount(termAtt);
@@ -98,7 +116,13 @@ public class EdgeGramTokenFilter extends TokenFilter {
                     final int charLength = Character.offsetByCodePoints(curTermCharArray, 0, curTermLength, 0, curGramSize);
 
                     if (curGramSize < curCodePointCount) {
-                        termAtt.setEmpty().append("e#");
+                        if (this.payload) {
+                            payloadAtt.setPayload(new BytesRef(this.source.getBytes(StandardCharsets.UTF_8)));
+                        }
+
+                        if (this.prefix != null) {
+                            termAtt.setEmpty().append(this.prefix);
+                        }
                     }
 
                     termAtt.append(curTermBuffer, 0, charLength);
@@ -120,7 +144,6 @@ public class EdgeGramTokenFilter extends TokenFilter {
     @Override
     public void reset() throws IOException {
         super.reset();
-
     }
 
 }

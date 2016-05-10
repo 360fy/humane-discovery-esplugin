@@ -34,7 +34,7 @@ public class HumaneTokenFilter extends TokenFilter {
     /**
      * Construct a token stream filtering the given input.
      */
-    protected HumaneTokenFilter(TokenStream input) {
+    public HumaneTokenFilter(TokenStream input) {
         super(input);
 
         final PositionIncrementAttribute posAtt = addAttribute(PositionIncrementAttribute.class);
@@ -45,7 +45,6 @@ public class HumaneTokenFilter extends TokenFilter {
                 new DMSoundexTokenGenerator(termAtt, posAtt, payloadAtt),
                 new BMTokenGenerator(termAtt, posAtt, payloadAtt),
                 new DMTokenGenerator(termAtt, posAtt, payloadAtt)
-
         };
     }
 

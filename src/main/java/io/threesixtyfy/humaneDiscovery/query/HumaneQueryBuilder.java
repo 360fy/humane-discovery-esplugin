@@ -6,6 +6,7 @@ import org.elasticsearch.index.query.QueryBuilder;
 
 import java.io.IOException;
 
+// TODO: build humane query
 public class HumaneQueryBuilder extends QueryBuilder implements BoostableQueryBuilder<HumaneQueryBuilder> {
     private final String name;
 

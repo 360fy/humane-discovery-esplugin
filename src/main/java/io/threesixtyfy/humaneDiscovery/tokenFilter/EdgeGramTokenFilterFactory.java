@@ -17,16 +17,22 @@ public class EdgeGramTokenFilterFactory extends AbstractTokenFilterFactory {
 
     private final int maxGram;
 
+    private final boolean payload;
+
+    private final String prefix;
+
     @Inject
     public EdgeGramTokenFilterFactory(Index index, IndexSettingsService indexSettingsService, @Assisted String name, @Assisted Settings settings) {
         super(index, indexSettingsService.getSettings(), name, settings);
 
         this.minGram = settings.getAsInt("min_gram", DEFAULT_MIN_EDGE_GRAM_SIZE);
         this.maxGram = settings.getAsInt("max_gram", DEFAULT_MAX_EDGE_GRAM_SIZE);
+        this.payload = settings.getAsBoolean("payload", false);
+        this.prefix = settings.get("prefix", "e#");
     }
 
     @Override
     public TokenStream create(TokenStream tokenStream) {
-        return new EdgeGramTokenFilter(tokenStream, minGram, maxGram);
+        return new EdgeGramTokenFilter(tokenStream, minGram, maxGram, prefix, payload);
     }
 }
