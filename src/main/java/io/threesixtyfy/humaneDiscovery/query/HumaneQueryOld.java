@@ -515,4 +515,96 @@ public class HumaneQueryOld /*extends Query*/ {
 //        return getClass().getSimpleName();
 //    }
 
+// BUILDING SYNONYMS
+    //            for (int j = 0; j < numClauses; j++) {
+//                String term = queryTerms[j];
+//                if (term == null) {
+//                    continue;
+//                }
+//
+//                // TODO: spelling correct the term if required... do we consider here Synonyms too ?
+//                // TODO: with corrected spellings finding Synonyms would be combinatorial problem
+//
+//                boolean first = true;
+//                StringBuilder sb = new StringBuilder();
+//                for (int k = j; k >= 0; k--) {
+//
+//                    String kTerm = queryTerms[k];
+//                    // ensure if there is null term in between we break
+//                    if (kTerm == null) {
+//                        break;
+//                    }
+//
+//                    if (!first) {
+//                        sb.insert(0, " ");
+//                    }
+//
+//                    sb.insert(0, kTerm);
+//
+//                    first = false;
+//
+//                    // ensure when we include phrase... we include in its entirety
+//                    Query queryNode = queryNodes[k];
+//                    if (queryNode == null) {
+//                        continue;
+//                    }
+//
+//                    logger.info("[HumaneQuery] looking for synonym: #{}", sb.toString());
+//
+//                    // check if there is a synonym for the running terms...
+//                    String synonym = this.Synonyms.get(sb.toString());
+//                    if (synonym != null) {
+//                        logger.info("[HumaneQuery] got synonym: #{}", synonym);
+//
+//                        boolean multiWordSynonym = false;
+//                        if (synonym.indexOf(' ') > 0) {
+//                            multiWordSynonym = true;
+//                        }
+//
+//                        // todo: pass lower boost to this, say 0.8
+//                        Collection<Query> synonymDisjuncts = this.fieldQuery(field, synonym, multiWordSynonym);
+//
+//                        if (k == j) {
+//                            // if k == j, DisMax(kQueryNode, synonym term query or phrase query)... check num terms in synonym... replace queryNode at Kth position with this
+//                            Collection<Query> disjunctionClauses = new LinkedList<>();
+//
+//                            if (queryNode instanceof DisjunctionMaxQuery) {
+//                                disjunctionClauses.addAll(((DisjunctionMaxQuery) queryNode).getDisjuncts());
+//                            } else {
+//                                disjunctionClauses.add(queryNode); //todo: new ConstantScoreQuery(queryNode)
+//                            }
+//
+//                            disjunctionClauses.addAll(synonymDisjuncts);
+//
+//                            queryNodes[k] = new DisjunctionMaxQuery(disjunctionClauses, 1.0f);
+//                        } else {
+//                            // else DisMax(Boolean(queryNodeK, ..., queryNodeJ), DisMax(Phrase query for sb, synonym term query or phrase query for synonym),
+//                            // replace queryNode at Kth position with this new query and make queryNode(K+1), ..., queryNode(J) null.
+//                            BooleanQuery.Builder kjQueryBuilder = new BooleanQuery.Builder();
+//                            for (int l = k; l <= j; l++) {
+//                                kjQueryBuilder.add(/*new ConstantScoreQuery(queryNodes[l])*/ queryNodes[l], BooleanClause.Occur.SHOULD);
+//                            }
+//
+//                            Collection<Query> synonymDisjunctionClauses = new LinkedList<>();
+////                            synonymDisjunctionClauses.add(new BoostQuery(new ConstantScoreQuery(phraseQuery), j - k + 1));
+////                            synonymDisjunctionClauses.add(new BoostQuery(new ConstantScoreQuery(synonymDisjuncts), (j - k + 1) * 0.8f));
+//                            this.fieldQuery(synonymDisjunctionClauses, field, sb.toString(), true); // todo: add phrase weight
+//                            synonymDisjunctionClauses.addAll(synonymDisjuncts); // todo: add synonym weight
+//
+//                            Query synonymQueryNode = new DisjunctionMaxQuery(synonymDisjunctionClauses, 1.0f);
+//
+//                            Collection<Query> finalDisjunctionClauses = new LinkedList<>();
+//                            finalDisjunctionClauses.add(kjQueryBuilder.build());
+//                            finalDisjunctionClauses.add(synonymQueryNode);
+//
+//                            queryNodes[k] = new DisjunctionMaxQuery(finalDisjunctionClauses, 1.0f);
+//
+//                            for (int l = k + 1; l <= j; l++) {
+//                                queryNodes[l] = null;
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+
 }

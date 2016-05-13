@@ -18,11 +18,11 @@ import static org.elasticsearch.action.search.ShardSearchFailure.readShardSearch
 
 public class DidYouMeanResponse extends ActionResponse implements StatusToXContent {
 
-    private int totalShards;
+    private int totalShards = 1;
 
-    private int successfulShards;
+    private int successfulShards = 1;
 
-    private ShardSearchFailure[] shardFailures;
+    private ShardSearchFailure[] shardFailures = ShardSearchFailure.EMPTY_ARRAY;
 
     private long tookInMillis;
 
@@ -39,7 +39,7 @@ public class DidYouMeanResponse extends ActionResponse implements StatusToXConte
     private float maxScore;
 
     public DidYouMeanResponse() {
-        shardFailures = ShardSearchFailure.EMPTY_ARRAY;
+//        shardFailures = ShardSearchFailure.EMPTY_ARRAY;
         results = EMPTY;
     }
 
@@ -48,16 +48,16 @@ public class DidYouMeanResponse extends ActionResponse implements StatusToXConte
         this.tookInMillis = tookInMillis;
     }
 
-    public DidYouMeanResponse(int totalShards, int successfulShards, long tookInMillis, ShardSearchFailure[] shardFailures) {
-        this(EMPTY, totalShards, successfulShards, tookInMillis, shardFailures);
-    }
+//    public DidYouMeanResponse(/*int totalShards, int successfulShards,*/ long tookInMillis/*, ShardSearchFailure[] shardFailures*/) {
+//        this(EMPTY, /*totalShards, successfulShards,*/ tookInMillis/*, shardFailures*/);
+//    }
 
-    public DidYouMeanResponse(DidYouMeanResult[] results, int totalShards, int successfulShards, long tookInMillis, ShardSearchFailure[] shardFailures) {
+    public DidYouMeanResponse(DidYouMeanResult[] results, /*int totalShards, int successfulShards, */long tookInMillis/*, ShardSearchFailure[] shardFailures*/) {
         this.results = results;
-        this.totalShards = totalShards;
-        this.successfulShards = successfulShards;
+//        this.totalShards = totalShards;
+//        this.successfulShards = successfulShards;
         this.tookInMillis = tookInMillis;
-        this.shardFailures = shardFailures;
+//        this.shardFailures = shardFailures;
         this.totalResults = results == null ? 0 : results.length;
     }
 

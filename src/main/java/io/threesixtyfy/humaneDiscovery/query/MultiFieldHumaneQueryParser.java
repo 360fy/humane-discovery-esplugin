@@ -1,9 +1,12 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
 import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.Query;
+import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.index.query.QueryParseContext;
 import org.elasticsearch.index.query.QueryParser;
@@ -19,9 +22,16 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
 
     public static final String NAME = "multi_humane_query";
 
+    private SuggestionsBuilder suggestionsBuilder;
+
     @Override
     public String[] names() {
         return new String[]{NAME, "multiHumaneQuery"};
+    }
+
+    @Inject
+    public void setSuggestionsBuilder(SuggestionsBuilder suggestionsBuilder) {
+        this.suggestionsBuilder = suggestionsBuilder;
     }
 
     @Override
@@ -119,9 +129,9 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
             throw new QueryParsingException(parseContext, "For single field query use [humane_query] instead");
         }
 
-        Query query = humaneQuery.parse(queryFields.toArray(new QueryField[queryFields.size()]), queryText);
+        Query query = humaneQuery.parse(suggestionsBuilder, queryFields.toArray(new QueryField[queryFields.size()]), queryText);
         if (query == null) {
-            return null;
+            return Queries.newMatchNoDocsQuery();
         }
 
         if (boost != 1.0f) {
@@ -131,6 +141,8 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
         if (queryName != null) {
             parseContext.addNamedQuery(queryName, query);
         }
+
+//        logger.info("Query: {}", query);
 
         return query;
     }

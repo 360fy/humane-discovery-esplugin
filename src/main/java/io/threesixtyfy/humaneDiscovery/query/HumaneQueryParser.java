@@ -1,7 +1,12 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
 import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.Query;
+import org.elasticsearch.common.inject.Inject;
+import org.elasticsearch.common.logging.ESLogger;
+import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.index.query.QueryParseContext;
 import org.elasticsearch.index.query.QueryParser;
@@ -11,13 +16,20 @@ import java.io.IOException;
 
 public class HumaneQueryParser implements QueryParser {
 
-//    private final ESLogger logger = Loggers.getLogger(HumaneQueryParser.class);
+    private final ESLogger logger = Loggers.getLogger(HumaneQueryParser.class);
 
     public static final String NAME = "humane_query";
+
+    private SuggestionsBuilder suggestionsBuilder;
 
     @Override
     public String[] names() {
         return new String[]{NAME, "humaneQuery"};
+    }
+
+    @Inject
+    public void setSuggestionsBuilder(SuggestionsBuilder suggestionsBuilder) {
+        this.suggestionsBuilder = suggestionsBuilder;
     }
 
     @Override
@@ -78,9 +90,9 @@ public class HumaneQueryParser implements QueryParser {
             throw new QueryParsingException(parseContext, "No text specified for query");
         }
 
-        Query query = humaneQuery.parse(queryField, queryText);
+        Query query = humaneQuery.parse(suggestionsBuilder, queryField, queryText);
         if (query == null) {
-            return null;
+            return Queries.newMatchNoDocsQuery();
         }
 
         if (queryField.boost != 1.0f) {
@@ -90,6 +102,8 @@ public class HumaneQueryParser implements QueryParser {
         if (queryName != null) {
             parseContext.addNamedQuery(queryName, query);
         }
+
+//        logger.info("Query: {}", query);
 
         return query;
     }

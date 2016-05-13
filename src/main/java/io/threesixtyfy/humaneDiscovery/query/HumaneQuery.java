@@ -1,9 +1,12 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.CachingTokenFilter;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BoostQuery;
@@ -34,30 +37,34 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class HumaneQuery extends Query {
     private final ESLogger logger = Loggers.getLogger(HumaneQueryParser.class);
 
-    private static final String StandardSearchAnalyzerName = "standard_search_analyzer";
-    private static final String StandardEdgeGramSearchAnalyzerName = "standard_edgeGram_search_analyzer";
-    private static final String[] PhoneticAnalyzerNames = {
-            "phonetic_refined_soundex_search_analyzer",
-            "phonetic_dm_soundex_search_analyzer",
-            "phonetic_bm_search_analyzer",
-            "phonetic_dm_search_analyzer"
-    };
-    private static final String[] PhoneticEdgeGramAnalyzerNames = {
-            "phonetic_refined_soundex_edgeGram_search_analyzer",
-            "phonetic_dm_soundex_edgeGram_search_analyzer",
-            "phonetic_bm_edgeGram_search_analyzer",
-            "phonetic_dm_edgeGram_search_analyzer"
-    };
+    private static final String StandardQueryAnalyzerName = "humane_query_analyzer";
+    private static final String StandardEdgeGramQueryAnalyzerName = "humane_edgeGram_query_analyzer";
+//
+//    private static final String[] PhoneticAnalyzerNames = {
+//            "phonetic_refined_soundex_search_analyzer",
+//            "phonetic_dm_soundex_search_analyzer",
+//            "phonetic_bm_search_analyzer",
+//            "phonetic_dm_search_analyzer"
+//    };
+//    private static final String[] PhoneticEdgeGramAnalyzerNames = {
+//            "phonetic_refined_soundex_edgeGram_search_analyzer",
+//            "phonetic_dm_soundex_edgeGram_search_analyzer",
+//            "phonetic_bm_edgeGram_search_analyzer",
+//            "phonetic_dm_edgeGram_search_analyzer"
+//    };
 
     private static final Map<String, QueryBuilder> QueryBuilderCache = new HashMap<>();
 
     private static final Map<String, NestedPathContext> NestedPathContextCache = new HashMap<>();
 
     protected final QueryParseContext parseContext;
+
+    private final DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
 
 //    private static final HashMap<String, String> Synonyms = new HashMap<>();
 //
@@ -185,20 +192,20 @@ public class HumaneQuery extends Query {
 //        }
 //    }
 
-    public Query parse(QueryField field, Object value) throws IOException {
+    public Query parse(SuggestionsBuilder suggestionsBuilder, QueryField field, Object value) throws IOException {
         try {
             QueryField[] queryFields = {field};
 
-            return humaneQuery(queryFields, value.toString());
+            return humaneQuery(suggestionsBuilder, queryFields, value.toString());
         } catch (Throwable t) {
             logger.error("Error in creating humane query", t);
             throw t;
         }
     }
 
-    public Query parse(QueryField[] fields, Object value) throws IOException {
+    public Query parse(SuggestionsBuilder suggestionsBuilder, QueryField[] fields, Object value) throws IOException {
         try {
-            return humaneQuery(fields, value.toString());
+            return humaneQuery(suggestionsBuilder, fields, value.toString());
         } catch (Throwable t) {
             logger.error("Error in creating humane query", t);
             throw t;
@@ -284,15 +291,15 @@ public class HumaneQuery extends Query {
         }
     }
 
-    protected Query multiFieldQuery(QueryField[] queryFields, String text, boolean phrase, int numTokens) {
+    protected Query multiFieldQuery(QueryField[] queryFields, String text, boolean shingle, int numTokens, Set<Suggestion> suggestions) {
         if (queryFields.length == 1) {
-            return this.fieldQuery(queryFields[0], text, phrase, numTokens);
+            return this.fieldQuery(queryFields[0], text, shingle, numTokens, suggestions);
         }
 
         List<Query> fieldDisjuncts = new LinkedList<>();
 
         for (QueryField queryField : queryFields) {
-            fieldDisjuncts.add(this.fieldQuery(queryField, text, phrase, numTokens));
+            fieldDisjuncts.add(this.fieldQuery(queryField, text, shingle, numTokens, suggestions));
         }
 
         return new DisjunctionMaxQuery(fieldDisjuncts, 1.0f);
@@ -302,19 +309,30 @@ public class HumaneQuery extends Query {
     // edgeGram = 30 % field weight
     // phonetic = 15 % field weight
     // edgeGramPhonetic = 5 % field weight
-    protected Query fieldQuery(QueryField field, String text, boolean phrase, int numTokens) {
+    protected Query fieldQuery(QueryField field, String text, boolean shingle, int numTokens, Set<Suggestion> suggestions) {
         BooleanQuery.Builder fieldQueryBuilder = new BooleanQuery.Builder();
 
         boolean noFuzzy = field.noFuzzy || numTokens == 1 && text.length() <= 3 || numTokens > 1 && text.length() <= 2;
 
-        if (!noFuzzy) {
-            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticAnalyzerNames), 0.15f * field.boost), BooleanClause.Occur.SHOULD);
-            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticEdgeGramAnalyzerNames), 0.05f * field.boost), BooleanClause.Occur.SHOULD);
-            fieldQueryBuilder.add(buildQuery(field, StandardSearchAnalyzerName, text, phrase, 0.50f * field.boost), BooleanClause.Occur.SHOULD);
-            fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramSearchAnalyzerName, text, phrase, 0.30f * field.boost), BooleanClause.Occur.SHOULD);
-        } else {
-            fieldQueryBuilder.add(buildQuery(field, StandardSearchAnalyzerName, text, phrase, 0.75f * field.boost), BooleanClause.Occur.SHOULD);
-            fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramSearchAnalyzerName, text, phrase, 0.25f * field.boost), BooleanClause.Occur.SHOULD);
+//        if (!noFuzzy) {
+//            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticAnalyzerNames), 0.15f * field.boost), BooleanClause.Occur.SHOULD);
+//            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticEdgeGramAnalyzerNames), 0.05f * field.boost), BooleanClause.Occur.SHOULD);
+//            fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, phrase, 0.50f * field.boost), BooleanClause.Occur.SHOULD);
+//            fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, phrase, 0.30f * field.boost), BooleanClause.Occur.SHOULD);
+//        } else {
+//            fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, phrase, 0.75f * field.boost), BooleanClause.Occur.SHOULD);
+//            fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, phrase, 0.25f * field.boost), BooleanClause.Occur.SHOULD);
+//        }
+
+        fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, shingle, 100.0f * field.boost), BooleanClause.Occur.SHOULD);
+        fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, shingle, 10.0f * field.boost), BooleanClause.Occur.SHOULD);
+
+        if (!noFuzzy && suggestions != null) {
+            for (Suggestion suggestion : suggestions) {
+                if (/*suggestion.getMatchLevel().getLevel() > MatchLevel.EdgeGram.getLevel()*/ !StringUtils.equals(suggestion.getSuggestion(), text)) {
+                    fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, suggestion.getSuggestion(), shingle, (1 - suggestion.getEditDistance() / 10.0f) * field.boost), BooleanClause.Occur.SHOULD);
+                }
+            }
         }
 
         Query query = fieldQueryBuilder.build();
@@ -328,64 +346,58 @@ public class HumaneQuery extends Query {
         return query;
     }
 
-    protected Query fieldFuzzyQuery(List<Query> phoneticClauses, float maxWeight) {
-        BooleanQuery.Builder phoneticQueryBuilder = new BooleanQuery.Builder();
+//    protected Query fieldFuzzyQuery(List<Query> phoneticClauses, float maxWeight) {
+//        BooleanQuery.Builder phoneticQueryBuilder = new BooleanQuery.Builder();
+//
+//        float phoneticClauseWeight = maxWeight / phoneticClauses.size();
+//
+//        for (Query clause : phoneticClauses) {
+//            phoneticQueryBuilder.add(constantScoreQuery(clause, phoneticClauseWeight), BooleanClause.Occur.SHOULD);
+//        }
+//
+//        phoneticQueryBuilder.setMinimumNumberShouldMatch(2);
+//
+//        return phoneticQueryBuilder.build();
+//    }
+//
+//    protected List<Query> fieldFuzzyClauses(QueryField field, String text, boolean phrase, String[] fuzzyAnalyzerNames) {
+//        List<Query> fuzzyClauses = new LinkedList<>();
+//        for (String analyzerName : fuzzyAnalyzerNames) { // noFuzzy ones
+//            Query fuzzyQuery = this.buildQuery(field, analyzerName, text, phrase, 1.0f);
+//            if (fuzzyQuery instanceof BooleanQuery) {
+//                BooleanQuery bq = (BooleanQuery) fuzzyQuery;
+//                for (BooleanClause clause : bq.clauses()) {
+//                    fuzzyClauses.add(clause.getQuery());
+//                }
+//            } else {
+//                fuzzyClauses.add(fuzzyQuery);
+//            }
+//        }
+//
+//        return fuzzyClauses;
+//    }
 
-        float phoneticClauseWeight = maxWeight / phoneticClauses.size();
-
-        for (Query clause : phoneticClauses) {
-            phoneticQueryBuilder.add(constantScoreQuery(clause, phoneticClauseWeight), BooleanClause.Occur.SHOULD);
-        }
-
-        phoneticQueryBuilder.setMinimumNumberShouldMatch(2);
-
-        return phoneticQueryBuilder.build();
-    }
-
-    protected List<Query> fieldFuzzyClauses(QueryField field, String text, boolean phrase, String[] fuzzyAnalyzerNames) {
-        List<Query> fuzzyClauses = new LinkedList<>();
-        for (String analyzerName : fuzzyAnalyzerNames) { // noFuzzy ones
-            Query fuzzyQuery = this.buildQuery(field, analyzerName, text, phrase, 1.0f);
-            if (fuzzyQuery instanceof BooleanQuery) {
-                BooleanQuery bq = (BooleanQuery) fuzzyQuery;
-                for (BooleanClause clause : bq.clauses()) {
-                    fuzzyClauses.add(clause.getQuery());
-                }
-            } else {
-                fuzzyClauses.add(fuzzyQuery);
-            }
-        }
-
-        return fuzzyClauses;
-    }
-
-    protected Query buildQuery(QueryField field, String analyzer, String text, boolean phrase, float weight) {
+    protected Query buildQuery(QueryField field, String analyzer, String text, boolean shingle, float weight) {
         QueryBuilder queryBuilder = this.queryBuilder(analyzer);
 
-        Query query;
+        String fieldName = field.name + (shingle ? ".shingle" : ".humane");
 
-        String fieldName = field.name + ".humane";
-
-        if (phrase) {
-            query = queryBuilder.createPhraseQuery(fieldName, text, 1);
-        } else {
-            query = queryBuilder.createBooleanQuery(fieldName, text);
-            if (query instanceof TermQuery) {
-                query = constantScoreQuery(query, weight);
-            } else if (query instanceof BooleanQuery) {
-                BooleanQuery bq = (BooleanQuery) query;
-                BooleanQuery.Builder builder = new BooleanQuery.Builder();
-                for (BooleanClause clause : bq.clauses()) {
-                    if (clause.getQuery() instanceof TermQuery) {
-                        TermQuery termQuery = (TermQuery) clause.getQuery();
-                        builder.add(constantScoreQuery(termQuery, weight), BooleanClause.Occur.SHOULD);
-                    } else {
-                        builder.add(clause.getQuery(), BooleanClause.Occur.SHOULD);
-                    }
+        Query query = queryBuilder.createBooleanQuery(fieldName, text);
+        if (query instanceof TermQuery) {
+            query = constantScoreQuery(query, weight);
+        } else if (query instanceof BooleanQuery) {
+            BooleanQuery bq = (BooleanQuery) query;
+            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+            for (BooleanClause clause : bq.clauses()) {
+                if (clause.getQuery() instanceof TermQuery) {
+                    TermQuery termQuery = (TermQuery) clause.getQuery();
+                    builder.add(constantScoreQuery(termQuery, weight), BooleanClause.Occur.SHOULD);
+                } else {
+                    builder.add(clause.getQuery(), BooleanClause.Occur.SHOULD);
                 }
-
-                query = builder.build();
             }
+
+            query = builder.build();
         }
 
         return query;
@@ -415,141 +427,28 @@ public class HumaneQuery extends Query {
         }
     }
 
-    protected String[] tokens(String text) {
-        ArrayList<String> tokenList = new ArrayList<>();
-
-        Analyzer standardSearchAnalyzer = this.analyzer(StandardSearchAnalyzerName);
-
-        try (TokenStream source = standardSearchAnalyzer.tokenStream("DUMMY", text);
-             CachingTokenFilter stream = new CachingTokenFilter(source)) {
-            TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-
-            stream.reset();
-            while (stream.incrementToken()) {
-                String token = toString(termAtt.getBytesRef());
-                tokenList.add(token);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Error analyzing query text", e);
-        }
-
-        return tokenList.toArray(new String[tokenList.size()]);
-    }
-
-    protected Query humaneQuery(QueryField[] queryFields, String queryText) {
-        String[] tokens = tokens(queryText);
-
-        int numTokens = tokens.length;
-
-        if (numTokens == 0) {
-            return null;
-        }
-
-        if (numTokens == 1) {
-            return this.multiFieldQuery(queryFields, tokens[0], false, numTokens);
-        }
-
-        // query terms
-        Query[] queryNodes = new Query[numTokens];
-//        String[] queryTerms = new String[numTokens];
-
-        for (int i = 0; i < numTokens; i++) {
-            String token = tokens[i];
-//            queryTerms[i] = token;
-            queryNodes[i] = this.multiFieldQuery(queryFields, token, false, numTokens);
-        }
-
-//            for (int j = 0; j < numClauses; j++) {
-//                String term = queryTerms[j];
-//                if (term == null) {
-//                    continue;
-//                }
+//    protected String[] tokens(String text) {
+//        ArrayList<String> tokenList = new ArrayList<>();
 //
-//                // TODO: spelling correct the term if required... do we consider here Synonyms too ?
-//                // TODO: with corrected spellings finding Synonyms would be combinatorial problem
+//        Analyzer standardSearchAnalyzer = this.analyzer(StandardQueryAnalyzerName);
 //
-//                boolean first = true;
-//                StringBuilder sb = new StringBuilder();
-//                for (int k = j; k >= 0; k--) {
+//        try (TokenStream source = standardSearchAnalyzer.tokenStream("DUMMY", text);
+//             CachingTokenFilter stream = new CachingTokenFilter(source)) {
+//            TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
 //
-//                    String kTerm = queryTerms[k];
-//                    // ensure if there is null term in between we break
-//                    if (kTerm == null) {
-//                        break;
-//                    }
-//
-//                    if (!first) {
-//                        sb.insert(0, " ");
-//                    }
-//
-//                    sb.insert(0, kTerm);
-//
-//                    first = false;
-//
-//                    // ensure when we include phrase... we include in its entirety
-//                    Query queryNode = queryNodes[k];
-//                    if (queryNode == null) {
-//                        continue;
-//                    }
-//
-//                    logger.info("[HumaneQuery] looking for synonym: #{}", sb.toString());
-//
-//                    // check if there is a synonym for the running terms...
-//                    String synonym = this.Synonyms.get(sb.toString());
-//                    if (synonym != null) {
-//                        logger.info("[HumaneQuery] got synonym: #{}", synonym);
-//
-//                        boolean multiWordSynonym = false;
-//                        if (synonym.indexOf(' ') > 0) {
-//                            multiWordSynonym = true;
-//                        }
-//
-//                        // todo: pass lower boost to this, say 0.8
-//                        Collection<Query> synonymDisjuncts = this.fieldQuery(field, synonym, multiWordSynonym);
-//
-//                        if (k == j) {
-//                            // if k == j, DisMax(kQueryNode, synonym term query or phrase query)... check num terms in synonym... replace queryNode at Kth position with this
-//                            Collection<Query> disjunctionClauses = new LinkedList<>();
-//
-//                            if (queryNode instanceof DisjunctionMaxQuery) {
-//                                disjunctionClauses.addAll(((DisjunctionMaxQuery) queryNode).getDisjuncts());
-//                            } else {
-//                                disjunctionClauses.add(queryNode); //todo: new ConstantScoreQuery(queryNode)
-//                            }
-//
-//                            disjunctionClauses.addAll(synonymDisjuncts);
-//
-//                            queryNodes[k] = new DisjunctionMaxQuery(disjunctionClauses, 1.0f);
-//                        } else {
-//                            // else DisMax(Boolean(queryNodeK, ..., queryNodeJ), DisMax(Phrase query for sb, synonym term query or phrase query for synonym),
-//                            // replace queryNode at Kth position with this new query and make queryNode(K+1), ..., queryNode(J) null.
-//                            BooleanQuery.Builder kjQueryBuilder = new BooleanQuery.Builder();
-//                            for (int l = k; l <= j; l++) {
-//                                kjQueryBuilder.add(/*new ConstantScoreQuery(queryNodes[l])*/ queryNodes[l], BooleanClause.Occur.SHOULD);
-//                            }
-//
-//                            Collection<Query> synonymDisjunctionClauses = new LinkedList<>();
-////                            synonymDisjunctionClauses.add(new BoostQuery(new ConstantScoreQuery(phraseQuery), j - k + 1));
-////                            synonymDisjunctionClauses.add(new BoostQuery(new ConstantScoreQuery(synonymDisjuncts), (j - k + 1) * 0.8f));
-//                            this.fieldQuery(synonymDisjunctionClauses, field, sb.toString(), true); // todo: add phrase weight
-//                            synonymDisjunctionClauses.addAll(synonymDisjuncts); // todo: add synonym weight
-//
-//                            Query synonymQueryNode = new DisjunctionMaxQuery(synonymDisjunctionClauses, 1.0f);
-//
-//                            Collection<Query> finalDisjunctionClauses = new LinkedList<>();
-//                            finalDisjunctionClauses.add(kjQueryBuilder.build());
-//                            finalDisjunctionClauses.add(synonymQueryNode);
-//
-//                            queryNodes[k] = new DisjunctionMaxQuery(finalDisjunctionClauses, 1.0f);
-//
-//                            for (int l = k + 1; l <= j; l++) {
-//                                queryNodes[l] = null;
-//                            }
-//                        }
-//                    }
-//                }
+//            stream.reset();
+//            while (stream.incrementToken()) {
+//                String token = toString(termAtt.getBytesRef());
+//                tokenList.add(token);
 //            }
+//        } catch (IOException e) {
+//            throw new RuntimeException("Error analyzing query text", e);
+//        }
+//
+//        return tokenList.toArray(new String[tokenList.size()]);
+//    }
 
+    private Query query(Query[] queryNodes, int numTokens) {
         int numQueryNodes = 0;
         Query lastNotNullQueryNode = null;
         for (int j = 0; j < numTokens; j++) {
@@ -570,17 +469,144 @@ public class HumaneQuery extends Query {
             }
         }
 
-        if (numTokens <= 2) {
-            booleanQueryBuilder.setMinimumNumberShouldMatch(numTokens);
-        } else if (numTokens <= 4) {
-            booleanQueryBuilder.setMinimumNumberShouldMatch((int) Math.floor(0.90 * numTokens));
-        } else if (numTokens <= 6) {
-            booleanQueryBuilder.setMinimumNumberShouldMatch((int) Math.floor(0.80 * numTokens));
-        } else {
-            booleanQueryBuilder.setMinimumNumberShouldMatch((int) Math.floor(0.70 * numTokens));
-        }
+        booleanQueryBuilder.setMinimumNumberShouldMatch(minimumShouldMatch(numTokens));
 
         return booleanQueryBuilder.build();
+    }
+
+    private int minimumShouldMatch(int numTokens) {
+        if (numTokens <= 2) {
+            return numTokens;
+        } else if (numTokens <= 4) {
+            return (int) Math.floor(0.90 * numTokens);
+        } else if (numTokens <= 6) {
+            return (int) Math.floor(0.80 * numTokens);
+        } else {
+            return (int) Math.floor(0.70 * numTokens);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    protected Query humaneQuery(SuggestionsBuilder suggestionsBuilder, QueryField[] queryFields, String queryText) throws IOException {
+
+        List<String> tokens = suggestionsBuilder.tokens(this.parseContext.analysisService(), queryText);
+
+        int numTokens = tokens.size();
+
+        if (numTokens == 0) {
+            return null;
+        }
+
+        String indexName = this.parseContext.index().name();
+
+        if (indexName.contains(":search_query_store")) {
+            Query[] queryNodes = new Query[numTokens];
+
+            for (int i = 0; i < numTokens; i++) {
+                String token = tokens.get(i);
+                queryNodes[i] = this.multiFieldQuery(queryFields, token, false, numTokens, null);
+            }
+
+            return query(queryNodes, numTokens);
+        } else {
+            Map<String, Conjunct> conjunctMap = new HashMap<>();
+            Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
+
+            final Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(conjunctMap.values(), indexName + ":did_you_mean_store");
+            if (suggestionsMap.size() == 0) {
+                return null;
+            }
+
+//            logger.info("Suggestions Map: {}", suggestionsMap);
+//            logger.info("Disjuncts: {}", disjuncts);
+
+            List<Query> queries = new ArrayList<>();
+
+            for (Disjunct disjunct : disjuncts) {
+                // check if all conjuncts have suggestions ?
+
+                int count = 0;
+                BooleanQuery.Builder disjunctQueryBuilder = new BooleanQuery.Builder();
+                for (Conjunct conjunct : disjunct.getConjuncts()) {
+                    // depending on the conjunct length form a query
+                    if (conjunct.getLength() == 1) {
+                        // we form normal query
+                        String token = conjunct.getTokens().get(0);
+                        String key = token;
+                        Set<Suggestion> suggestions = suggestionsMap.get(key);
+                        Query termQuery = null;
+                        if (suggestions != null) {
+                            termQuery = this.multiFieldQuery(queryFields, token, false, numTokens, suggestions);
+                        }
+
+                        key = key + "/joined";
+                        suggestions = suggestionsMap.get(key);
+                        Query joinedQuery = null;
+                        if (suggestions != null) {
+                            // query in shingle field
+                            joinedQuery = this.multiFieldQuery(queryFields, token, true, numTokens, suggestions);
+//                            logger.info("Joined Query: {}", joinedQuery);
+                        }
+
+                        if (termQuery != null && joinedQuery != null) {
+                            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+                            builder.add(termQuery, BooleanClause.Occur.SHOULD);
+                            builder.add(joinedQuery, BooleanClause.Occur.SHOULD);
+                            disjunctQueryBuilder.add(builder.build(), BooleanClause.Occur.SHOULD);
+                            count++;
+                        } else if (termQuery != null) {
+                            disjunctQueryBuilder.add(termQuery, BooleanClause.Occur.SHOULD);
+                            count++;
+                        } else if (joinedQuery != null) {
+                            disjunctQueryBuilder.add(joinedQuery, BooleanClause.Occur.SHOULD);
+                            count++;
+                        }
+                    } else {
+                        Query shingleQuery = null;
+                        if (conjunct.getLength() == 2) {
+                            // we form a shingle query
+                            String shingleToken = StringUtils.join(conjunct.getTokens(), "");
+                            String key = conjunct.getKey() + "/shingle";
+                            Set<Suggestion> suggestions = suggestionsMap.get(key);
+
+                            if (suggestions != null) {
+                                shingleQuery = this.multiFieldQuery(queryFields, shingleToken, true, numTokens, suggestions);
+                            }
+                        }
+
+                        // if compound token exists we form a compound query
+                        String compoundToken = StringUtils.join(conjunct.getTokens());
+                        String key = conjunct.getKey() + "/compound";
+                        Set<Suggestion> suggestions = suggestionsMap.get(key);
+                        Query compoundQuery = null;
+                        if (suggestions != null) {
+                            compoundQuery = this.multiFieldQuery(queryFields, compoundToken, false, numTokens, suggestions);
+                        }
+
+                        if (shingleQuery != null && compoundQuery != null) {
+                            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+                            builder.add(shingleQuery, BooleanClause.Occur.SHOULD);
+                            builder.add(compoundQuery, BooleanClause.Occur.SHOULD);
+                            disjunctQueryBuilder.add(builder.build(), BooleanClause.Occur.MUST);
+                        } else if (compoundQuery != null) {
+                            disjunctQueryBuilder.add(compoundQuery, BooleanClause.Occur.MUST);
+                        } else if (shingleQuery != null) {
+                            disjunctQueryBuilder.add(shingleQuery, BooleanClause.Occur.MUST);
+                        }
+                    }
+                }
+
+                disjunctQueryBuilder.setMinimumNumberShouldMatch(minimumShouldMatch(count));
+
+                queries.add(disjunctQueryBuilder.build());
+            }
+
+            if (queries.size() == 0) {
+                return queries.get(0);
+            }
+
+            return new DisjunctionMaxQuery(queries, 1.0f);
+        }
     }
 
     @Override

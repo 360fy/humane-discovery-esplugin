@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.didYouMean.builder;
 
-import io.threesixtyfy.humaneDiscovery.commons.TokenEncodingUtility;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.EdgeGramEncodingUtils;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.PhoneticEncodingUtils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -41,6 +42,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
@@ -49,14 +51,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE;
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE;
 import static org.elasticsearch.cluster.metadata.IndexMetaData.SETTING_NUMBER_OF_REPLICAS;
 import static org.elasticsearch.cluster.metadata.IndexMetaData.SETTING_NUMBER_OF_SHARDS;
 
 public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouMeanBuilderService> {
-
-    public static final String UNIGRAM_DID_YOU_MEAN_INDEX_TYPE = "didYouMean";
-
-    public static final String BIGRAM_DID_YOU_MEAN_INDEX_TYPE = "didYouMeanBigram";
 
     public static final String DID_YOY_MEAN_ENABLE_SETTING = "index.did_you_mean_enabled";
 
@@ -354,7 +354,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
                 if (wordAggregateInfo instanceof BigramWordAggregateInfo) {
                     BigramWordAggregateInfo bigramWordAggregateInfo = (BigramWordAggregateInfo) wordAggregateInfo;
-                    bulk.add(new IndexRequest(wordAggregateInfo.indexName, BIGRAM_DID_YOU_MEAN_INDEX_TYPE, bigramWordAggregateInfo.word + " " + bigramWordAggregateInfo.word2).source(bigramWordAggregateInfo.map()));
+                    bulk.add(new IndexRequest(wordAggregateInfo.indexName, BIGRAM_DID_YOU_MEAN_INDEX_TYPE, bigramWordAggregateInfo.word).source(bigramWordAggregateInfo.map()));
                 } else {
                     bulk.add(new IndexRequest(wordAggregateInfo.indexName, UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, wordAggregateInfo.word).source(wordAggregateInfo.map()));
                 }
@@ -371,23 +371,23 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         }
     }
 
-    private void subAggregateWordInfo(Map<String, SubAggregateInfo> subAggregatesInfo, String field/*, boolean edgeGram*/) {
+    private void subAggregateWordInfo(Map<String, SubAggregateInfo> subAggregatesInfo, String field, boolean edgeGram) {
         if (!subAggregatesInfo.containsKey(field)) {
-            subAggregatesInfo.put(field, new SubAggregateInfo(field, 1/*, edgeGram ? 0 : 1, edgeGram ? 1 : 0*/));
+            subAggregatesInfo.put(field, new SubAggregateInfo(field, 1, edgeGram ? 0 : 1, edgeGram ? 1 : 0));
         } else {
             SubAggregateInfo subAggregateInfo = subAggregatesInfo.get(field);
             subAggregateInfo.totalCount++;
-//            if (edgeGram) {
-//                subAggregateInfo.countAsEdgeGram++;
-//            } else {
-//                subAggregateInfo.countAsFullWord++;
-//            }
+            if (edgeGram) {
+                subAggregateInfo.countAsEdgeGram++;
+            } else {
+                subAggregateInfo.countAsFullWord++;
+            }
         }
     }
 
     private void newPollerThread() {
         poller = new Thread(() -> {
-            TokenEncodingUtility tokenEncodingUtility = new TokenEncodingUtility();
+            PhoneticEncodingUtils phoneticEncodingUtils = new PhoneticEncodingUtils();
 
             int idleWaitCount = 0;
             while (true) {
@@ -425,14 +425,15 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
                 String indexName = wordInfo.indexName;
                 String word = wordInfo.word;
+                String word1 = null;
                 String word2 = null;
                 String wordKey = null;
 
                 wordKey = indexName + ":" + word;
 
                 if (wordInfo instanceof BigramWordInfo) {
+                    word1 = ((BigramWordInfo) wordInfo).word1;
                     word2 = ((BigramWordInfo) wordInfo).word2;
-                    wordKey = wordKey + ":" + word2;
                 }
 
 //                logger.info("Aggregating {} for index: {}", wordKey, indexName);
@@ -440,16 +441,19 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                 WordAggregateInfo wordAggregateInfo = null;
                 if (!wordsAggregateInfo.containsKey(wordKey)) {
                     if (wordInfo instanceof BigramWordInfo) {
-                        GetRequest getRequest = new GetRequest(indexName, BIGRAM_DID_YOU_MEAN_INDEX_TYPE, word + " " + word2);
+                        GetRequest getRequest = new GetRequest(indexName, BIGRAM_DID_YOU_MEAN_INDEX_TYPE, word);
                         Map<String, Object> getResponse = client.get(getRequest).actionGet().getSourceAsMap();
                         if (getResponse == null) {
-                            BigramWordAggregateInfo bigramWordAggregateInfo = new BigramWordAggregateInfo(indexName, word, word2);
+                            BigramWordAggregateInfo bigramWordAggregateInfo = new BigramWordAggregateInfo(indexName, word1, word2);
 
                             // do it for word 1 phonetic encodings
-                            tokenEncodingUtility.buildEncodings(word, bigramWordAggregateInfo.encodings);
+                            phoneticEncodingUtils.buildEncodings(word, bigramWordAggregateInfo.encodings);
+
+                            // do it for word 1 phonetic encodings
+                            phoneticEncodingUtils.buildEncodings(word1, bigramWordAggregateInfo.word1Encodings);
 
                             // do it for word2 phonetic encodings
-                            tokenEncodingUtility.buildEncodings(word2, bigramWordAggregateInfo.word2Encodings);
+                            phoneticEncodingUtils.buildEncodings(word2, bigramWordAggregateInfo.word2Encodings);
 
                             wordAggregateInfo = bigramWordAggregateInfo;
                         } else {
@@ -460,7 +464,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                         Map<String, Object> getResponse = client.get(getRequest).actionGet().getSourceAsMap();
                         if (getResponse == null) {
                             wordAggregateInfo = new WordAggregateInfo(indexName, word);
-                            tokenEncodingUtility.buildEncodings(word, wordAggregateInfo.encodings);
+                            phoneticEncodingUtils.buildEncodings(word, wordAggregateInfo.encodings);
                         } else {
                             wordAggregateInfo = WordAggregateInfo.unmap(indexName, getResponse);
                         }
@@ -474,33 +478,33 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
                 // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
                 // this is common between unigram and bigram
-//                boolean edgeGram = wordInfo.edgeGram;
+                boolean edgeGram = wordInfo.edgeGram;
 
                 wordAggregateInfo.totalCount++;
-//                if (edgeGram) {
-//                    wordAggregateInfo.countAsEdgeGram++;
-//                } else {
-//                    wordAggregateInfo.countAsFullWord++;
-//                }
+                if (edgeGram) {
+                    wordAggregateInfo.countAsEdgeGram++;
+                } else {
+                    wordAggregateInfo.countAsFullWord++;
+                }
 
-//                String originalWord = wordInfo.originalWord;
-//                if (originalWord != null) {
-//                    if (wordAggregateInfo.originalWords.containsKey(originalWord)) {
-//                        wordAggregateInfo.originalWords.put(originalWord, wordAggregateInfo.originalWords.get(originalWord) + 1);
-//                    } else {
-//                        wordAggregateInfo.originalWords.put(originalWord, 1);
-//                    }
-//                }
+                String originalWord = wordInfo.originalWord;
+                if (originalWord != null) {
+                    if (wordAggregateInfo.originalWords.containsKey(originalWord)) {
+                        wordAggregateInfo.originalWords.put(originalWord, wordAggregateInfo.originalWords.get(originalWord) + 1);
+                    } else {
+                        wordAggregateInfo.originalWords.put(originalWord, 1);
+                    }
+                }
 
                 String type = wordInfo.typeName;
 
                 // aggregate by type
-                subAggregateWordInfo(wordAggregateInfo.typeAggregateInfo, type/*, edgeGram*/);
+                subAggregateWordInfo(wordAggregateInfo.typeAggregateInfo, type, edgeGram);
 
                 String field = type + ":" + wordInfo.field;
 
                 // aggregate by field
-                subAggregateWordInfo(wordAggregateInfo.fieldAggregateInfo, field/*, edgeGram*/);
+                subAggregateWordInfo(wordAggregateInfo.fieldAggregateInfo, field, edgeGram);
                 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             }
         });
@@ -600,11 +604,11 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     // totalCount
                     .startObject("totalCount").field("type", "long").endObject()
 
-//                    // countAsFullWord
-//                    .startObject("countAsFullWord").field("type", "long").endObject()
-//
-//                    // countAsEdgeGram
-//                    .startObject("countAsEdgeGram").field("type", "long").endObject()
+                    // countAsFullWord
+                    .startObject("countAsFullWord").field("type", "long").endObject()
+
+                    // countAsEdgeGram
+                    .startObject("countAsEdgeGram").field("type", "long").endObject()
 
                     // field stats start
                     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -620,11 +624,11 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     // totalCount
                     .startObject("totalCount").field("type", "long").endObject()
 
-//                    // countAsFullWord
-//                    .startObject("countAsFullWord").field("type", "long").endObject()
-//
-//                    // countAsEdgeGram
-//                    .startObject("countAsEdgeGram").field("type", "long").endObject()
+                    // countAsFullWord
+                    .startObject("countAsFullWord").field("type", "long").endObject()
+
+                    // countAsEdgeGram
+                    .startObject("countAsEdgeGram").field("type", "long").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -644,31 +648,31 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     // totalCount
                     .startObject("totalCount").field("type", "long").endObject()
 
-//                    // countAsFullWord
-//                    .startObject("countAsFullWord").field("type", "long").endObject()
-//
-//                    // countAsEdgeGram
-//                    .startObject("countAsEdgeGram").field("type", "long").endObject()
+                    // countAsFullWord
+                    .startObject("countAsFullWord").field("type", "long").endObject()
+
+                    // countAsEdgeGram
+                    .startObject("countAsEdgeGram").field("type", "long").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-//                    // original word stats start
-//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-//                    .startObject("originalWords")
-//
-//                    .field("type", "nested")
-//
-//                    .startObject("properties")
-//
-//                    // name
-//                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
-//
-//                    // totalCount
-//                    .startObject("totalCount").field("type", "long").endObject()
-//
-//                    .endObject().endObject()
-//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                    // original word stats start
+                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+                    .startObject("originalWords")
+
+                    .field("type", "nested")
+
+                    .startObject("properties")
+
+                    // name
+                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
+
+                    // totalCount
+                    .startObject("totalCount").field("type", "long").endObject()
+
+                    .endObject().endObject()
+                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
                     .endObject().endObject().endObject()
 
@@ -684,24 +688,32 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             return XContentBuilder.builder(JsonXContent.jsonXContent).startObject().startObject(BIGRAM_DID_YOU_MEAN_INDEX_TYPE)
                     .startObject("properties")
 
+                    // word
+                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
+
                     // word1
                     .startObject("word1").field("type", "string").field("index", "not_analyzed").endObject()
 
+                    // word2
                     .startObject("word2").field("type", "string").field("index", "not_analyzed").endObject()
 
                     // encodings
+                    .startObject("encodings").field("type", "string").field("index", "not_analyzed").endObject()
+
+                    // word1 encodings
                     .startObject("word1Encodings").field("type", "string").field("index", "not_analyzed").endObject()
 
+                    // word2 encodings
                     .startObject("word2Encodings").field("type", "string").field("index", "not_analyzed").endObject()
 
                     // totalCount
                     .startObject("totalCount").field("type", "long").endObject()
 
-//                    // countAsFullWord
-//                    .startObject("countAsFullWord").field("type", "long").endObject()
-//
-//                    // countAsEdgeGram
-//                    .startObject("countAsEdgeGram").field("type", "long").endObject()
+                    // countAsFullWord
+                    .startObject("countAsFullWord").field("type", "long").endObject()
+
+                    // countAsEdgeGram
+                    .startObject("countAsEdgeGram").field("type", "long").endObject()
 
                     // field stats start
                     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -717,11 +729,11 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     // totalCount
                     .startObject("totalCount").field("type", "long").endObject()
 
-//                    // countAsFullWord
-//                    .startObject("countAsFullWord").field("type", "long").endObject()
-//
-//                    // countAsEdgeGram
-//                    .startObject("countAsEdgeGram").field("type", "long").endObject()
+                    // countAsFullWord
+                    .startObject("countAsFullWord").field("type", "long").endObject()
+
+                    // countAsEdgeGram
+                    .startObject("countAsEdgeGram").field("type", "long").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -741,31 +753,31 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     // totalCount
                     .startObject("totalCount").field("type", "long").endObject()
 
-//                    // countAsFullWord
-//                    .startObject("countAsFullWord").field("type", "long").endObject()
-//
-//                    // countAsEdgeGram
-//                    .startObject("countAsEdgeGram").field("type", "long").endObject()
+                    // countAsFullWord
+                    .startObject("countAsFullWord").field("type", "long").endObject()
+
+                    // countAsEdgeGram
+                    .startObject("countAsEdgeGram").field("type", "long").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-//                    // original word stats start
-//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-//                    .startObject("originalWords")
-//
-//                    .field("type", "nested")
-//
-//                    .startObject("properties")
-//
-//                    // name
-//                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
-//
-//                    // totalCount
-//                    .startObject("totalCount").field("type", "long").endObject()
-//
-//                    .endObject().endObject()
-//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                    // original word stats start
+                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+                    .startObject("originalWords")
+
+                    .field("type", "nested")
+
+                    .startObject("properties")
+
+                    // name
+                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
+
+                    // totalCount
+                    .startObject("totalCount").field("type", "long").endObject()
+
+                    .endObject().endObject()
+                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
                     .endObject().endObject().endObject()
 
@@ -786,16 +798,11 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             super();
             this.analysisService = analysisService;
             this.indexName = indexName;
-            this.humaneAnalyzer = this.analysisService.analyzer("humane_did_you_mean_builder_analyzer");
+            this.humaneAnalyzer = this.analysisService.analyzer("humane_query_analyzer");
         }
 
         private void add(ParsedDocument parsedDocument) {
-//            logger.info("Adding document of type: {}, id: {}, index: {}", parsedDocument.type(), parsedDocument.id(), this.indexName);
-//            final StringTokenStream wordTokenStream = new StringTokenStream();
-//            final EdgeNGramTokenFilter edgeGramTokenFilter = new EdgeNGramTokenFilter(wordTokenStream, 2, 20);
-//
-//            final CharTermAttribute edgeGramTermAttribute = edgeGramTokenFilter.getAttribute(CharTermAttribute.class);
-
+            EdgeGramEncodingUtils edgeGramEncodingUtils = new EdgeGramEncodingUtils();
             TokenStream tokenStream = null;
             for (ParseContext.Document document : parsedDocument.docs()) {
                 for (IndexableField field : document.getFields()) {
@@ -818,37 +825,22 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
 //                            logger.info("Adding word {} for type: {}, index: {}", word, parsedDocument.type(), this.indexName);
 
-                            wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), word, fieldName/*, false, null*/));
+                            wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), word, fieldName, false, word));
                             queuedWordCount.addAndGet(1);
                             if (previousWord != null) {
-                                wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, word, fieldName/*, false, null*/));
+                                wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, word, fieldName, false, previousWord + word));
                                 queuedWordCount.addAndGet(1);
                             }
 
-//                            try {
-//                                wordTokenStream.setValue(word);
-//
-//                                wordTokenStream.reset();
-//                                edgeGramTokenFilter.reset();
-//
-//                                while (edgeGramTokenFilter.incrementToken()) {
-//                                    String edgeGram = edgeGramTermAttribute.toString();
-//                                    if (!word.equals(edgeGram)) {
-//                                        wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), edgeGram, fieldName, true, word));
-//                                        queuedWordCount.addAndGet(1);
-//
-//                                        if (previousWord != null) {
-//                                            wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, edgeGram, fieldName, true, previousWord + " " + edgeGram));
-//                                            queuedWordCount.addAndGet(1);
-//                                        }
-//                                    }
-//                                }
-//
-//                                edgeGramTokenFilter.close();
-//                                wordTokenStream.close();
-//                            } catch (IOException e) {
-//                                logger.error("IOException in generating phonetic tokens: {}", e, word);
-//                            }
+                            for (String edgeGram : edgeGramEncodingUtils.buildEncodings(word)) {
+                                wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), edgeGram, fieldName, true, word));
+                                queuedWordCount.addAndGet(1);
+
+                                if (previousWord != null) {
+                                    wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, edgeGram, fieldName, true, previousWord + word));
+                                    queuedWordCount.addAndGet(1);
+                                }
+                            }
 
                             previousWord = word;
                         }
@@ -897,16 +889,16 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
         String word;
         String field;
-//        boolean edgeGram;
-//        String originalWord;
+        boolean edgeGram;
+        String originalWord;
 
-        public WordInfo(String indexName, String typeName, String word, String field/*, boolean edgeGram, String originalWord*/) {
+        public WordInfo(String indexName, String typeName, String word, String field, boolean edgeGram, String originalWord) {
             this.indexName = indexName;
             this.typeName = typeName;
             this.word = word;
             this.field = field;
-//            this.edgeGram = edgeGram;
-//            this.originalWord = originalWord;
+            this.edgeGram = edgeGram;
+            this.originalWord = originalWord;
         }
 
         @Override
@@ -916,18 +908,20 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     ", typeName='" + typeName + '\'' +
                     ", word='" + word + '\'' +
                     ", field='" + field + '\'' +
-//                    ", edgeGram=" + edgeGram +
-//                    ", originalWord='" + originalWord + '\'' +
+                    ", edgeGram=" + edgeGram +
+                    ", originalWord='" + originalWord + '\'' +
                     '}';
         }
     }
 
     static class BigramWordInfo extends WordInfo {
+        String word1;
         String word2;
 
-        public BigramWordInfo(String indexName, String typeName, String word1, String word2, String field/*, boolean edgeGram, String originalWord*/) {
-            super(indexName, typeName, word1, field/*, edgeGram, originalWord*/);
+        public BigramWordInfo(String indexName, String typeName, String word1, String word2, String field, boolean edgeGram, String originalWord) {
+            super(indexName, typeName, word1 + word2, field, edgeGram, originalWord);
 
+            this.word1 = word1;
             this.word2 = word2;
         }
 
@@ -945,16 +939,16 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         final String word;
 
         int totalCount;
-//        int countAsFullWord;
-//        int countAsEdgeGram;
+        int countAsFullWord;
+        int countAsEdgeGram;
 
-        final List<String> encodings = new LinkedList<>();
+        final Set<String> encodings = new HashSet<>();
 
         final Map<String, SubAggregateInfo> typeAggregateInfo = new HashMap<>();
 
         final Map<String, SubAggregateInfo> fieldAggregateInfo = new HashMap<>();
 
-//        final Map<String, Integer> originalWords = new HashMap<>();
+        final Map<String, Integer> originalWords = new HashMap<>();
 
         public WordAggregateInfo(String indexName, String word) {
             this.indexName = indexName;
@@ -966,22 +960,22 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
             map.put("word", word);
             map.put("totalCount", totalCount);
-//            map.put("countAsFullWord", countAsFullWord);
-//            map.put("countAsEdgeGram", countAsEdgeGram);
+            map.put("countAsFullWord", countAsFullWord);
+            map.put("countAsEdgeGram", countAsEdgeGram);
             map.put("encodings", encodings);
             map.put("typeStats", typeAggregateInfo.values().stream().map(SubAggregateInfo::map).collect(Collectors.toList()));
             map.put("fieldStats", fieldAggregateInfo.values().stream().map(SubAggregateInfo::map).collect(Collectors.toList()));
 
-//            List<Map<String, Object>> originalWordList = new LinkedList<>();
-//
-//            for (Map.Entry<String, Integer> entry : originalWords.entrySet()) {
-//                Map<String, Object> originalWord = new HashMap<>();
-//                originalWord.put("word", entry.getKey());
-//                originalWord.put("totalCount", entry.getValue());
-//                originalWordList.add(originalWord);
-//            }
-//
-//            map.put("originalWords", originalWordList);
+            List<Map<String, Object>> originalWordList = new LinkedList<>();
+
+            for (Map.Entry<String, Integer> entry : originalWords.entrySet()) {
+                Map<String, Object> originalWord = new HashMap<>();
+                originalWord.put("word", entry.getKey());
+                originalWord.put("totalCount", entry.getValue());
+                originalWordList.add(originalWord);
+            }
+
+            map.put("originalWords", originalWordList);
 
             return map;
         }
@@ -991,8 +985,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             WordAggregateInfo wordAggregateInfo = new WordAggregateInfo(indexName, (String) map.get("word"));
 
             wordAggregateInfo.totalCount = (int) map.get("totalCount");
-//            wordAggregateInfo.countAsFullWord = (int) map.get("countAsFullWord");
-//            wordAggregateInfo.countAsEdgeGram = (int) map.get("countAsEdgeGram");
+            wordAggregateInfo.countAsFullWord = (int) map.get("countAsFullWord");
+            wordAggregateInfo.countAsEdgeGram = (int) map.get("countAsEdgeGram");
 
             List<Map<String, Object>> typeStats = (List<Map<String, Object>>) map.get("typeStats");
             for (Map<String, Object> stat : typeStats) {
@@ -1004,10 +998,10 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                 wordAggregateInfo.fieldAggregateInfo.put((String) stat.get("name"), SubAggregateInfo.unmap(stat));
             }
 
-//            List<Map<String, Object>> originalWordList = (List<Map<String, Object>>) map.get("originalWords");
-//            for (Map<String, Object> originalWord : originalWordList) {
-//                wordAggregateInfo.originalWords.put((String) originalWord.get("word"), (Integer) originalWord.get("totalCount"));
-//            }
+            List<Map<String, Object>> originalWordList = (List<Map<String, Object>>) map.get("originalWords");
+            for (Map<String, Object> originalWord : originalWordList) {
+                wordAggregateInfo.originalWords.put((String) originalWord.get("word"), (Integer) originalWord.get("totalCount"));
+            }
 
             wordAggregateInfo.encodings.addAll((List<String>) map.get("encodings"));
 
@@ -1020,8 +1014,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     "indexName='" + indexName + '\'' +
                     ", word='" + word + '\'' +
                     ", totalCount=" + totalCount +
-//                    ", countAsFullWord=" + countAsFullWord +
-//                    ", countAsEdgeGram=" + countAsEdgeGram +
+                    ", countAsFullWord=" + countAsFullWord +
+                    ", countAsEdgeGram=" + countAsEdgeGram +
                     ", encodings=" + encodings +
                     ", typeAggregateInfo=" + typeAggregateInfo +
                     ", fieldAggregateInfo=" + fieldAggregateInfo +
@@ -1030,23 +1024,26 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     }
 
     static class BigramWordAggregateInfo extends WordAggregateInfo {
+        final String word1;
         final String word2;
 
-        final List<String> word2Encodings = new LinkedList<>();
+        final Set<String> word1Encodings = new HashSet<>();
+        final Set<String> word2Encodings = new HashSet<>();
 
         public BigramWordAggregateInfo(String indexName, String word1, String word2) {
-            super(indexName, word1);
+            super(indexName, word1 + word2);
+            this.word1 = word1;
             this.word2 = word2;
         }
 
         public Map<String, Object> map() {
             Map<String, Object> map = super.map();
-            map.put("word1", word);
+            map.put("word", word);
+            map.put("word1", word1);
             map.put("word2", word2);
-            map.put("word1Encodings", encodings);
+            map.put("encodings", encodings);
+            map.put("word1Encodings", word1Encodings);
             map.put("word2Encodings", word2Encodings);
-            map.remove("word");
-            map.remove("encodings");
 
             return map;
         }
@@ -1057,8 +1054,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             BigramWordAggregateInfo wordAggregateInfo = new BigramWordAggregateInfo(indexName, (String) map.get("word1"), (String) map.get("word2"));
 
             wordAggregateInfo.totalCount = (int) map.get("totalCount");
-//            wordAggregateInfo.countAsFullWord = (int) map.get("countAsFullWord");
-//            wordAggregateInfo.countAsEdgeGram = (int) map.get("countAsEdgeGram");
+            wordAggregateInfo.countAsFullWord = (int) map.get("countAsFullWord");
+            wordAggregateInfo.countAsEdgeGram = (int) map.get("countAsEdgeGram");
 
             List<Map<String, Object>> typeStats = (List<Map<String, Object>>) map.get("typeStats");
             for (Map<String, Object> stat : typeStats) {
@@ -1070,12 +1067,13 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                 wordAggregateInfo.fieldAggregateInfo.put((String) stat.get("name"), SubAggregateInfo.unmap(stat));
             }
 
-//            List<Map<String, Object>> originalWordList = (List<Map<String, Object>>) map.get("originalWords");
-//            for (Map<String, Object> originalWord : originalWordList) {
-//                wordAggregateInfo.originalWords.put((String) originalWord.get("word"), (Integer) originalWord.get("totalCount"));
-//            }
+            List<Map<String, Object>> originalWordList = (List<Map<String, Object>>) map.get("originalWords");
+            for (Map<String, Object> originalWord : originalWordList) {
+                wordAggregateInfo.originalWords.put((String) originalWord.get("word"), (Integer) originalWord.get("totalCount"));
+            }
 
-            wordAggregateInfo.encodings.addAll((List<String>) map.get("word1Encodings"));
+            wordAggregateInfo.encodings.addAll((List<String>) map.get("encodings"));
+            wordAggregateInfo.word1Encodings.addAll((List<String>) map.get("word1Encodings"));
             wordAggregateInfo.word2Encodings.addAll((List<String>) map.get("word2Encodings"));
 
             return wordAggregateInfo;
@@ -1093,14 +1091,14 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     static class SubAggregateInfo {
         String name;
         int totalCount;
-//        int countAsFullWord;
-//        int countAsEdgeGram;
+        int countAsFullWord;
+        int countAsEdgeGram;
 
-        public SubAggregateInfo(String name, int totalCount/*, int countAsFullWord, int countAsEdgeGram*/) {
+        public SubAggregateInfo(String name, int totalCount, int countAsFullWord, int countAsEdgeGram) {
             this.name = name;
             this.totalCount = totalCount;
-//            this.countAsFullWord = countAsFullWord;
-//            this.countAsEdgeGram = countAsEdgeGram;
+            this.countAsFullWord = countAsFullWord;
+            this.countAsEdgeGram = countAsEdgeGram;
         }
 
         public Map<String, Object> map() {
@@ -1108,14 +1106,14 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
             map.put("name", name);
             map.put("totalCount", totalCount);
-//            map.put("countAsFullWord", countAsFullWord);
-//            map.put("countAsEdgeGram", countAsEdgeGram);
+            map.put("countAsFullWord", countAsFullWord);
+            map.put("countAsEdgeGram", countAsEdgeGram);
 
             return map;
         }
 
         public static SubAggregateInfo unmap(Map<String, Object> map) {
-            return new SubAggregateInfo((String) map.get("name"), (int) map.get("totalCount")/*, (int) map.get("countAsFullWord"), (int) map.get("countAsEdgeGram")*/);
+            return new SubAggregateInfo((String) map.get("name"), (int) map.get("totalCount"), (int) map.get("countAsFullWord"), (int) map.get("countAsEdgeGram"));
         }
 
         @Override
@@ -1123,8 +1121,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             return "SubAggregateInfo{" +
                     "name='" + name + '\'' +
                     ", totalCount=" + totalCount +
-//                    ", countAsFullWord=" + countAsFullWord +
-//                    ", countAsEdgeGram=" + countAsEdgeGram +
+                    ", countAsFullWord=" + countAsFullWord +
+                    ", countAsEdgeGram=" + countAsEdgeGram +
                     '}';
         }
     }
