@@ -57,7 +57,9 @@ public class SuggestionsBuilder extends AbstractComponent {
         }
 
         TokenStream tokenStream = analyzer.tokenStream("dummyField", query);
+
         tokenStream.reset();
+
         CharTermAttribute termAttribute = tokenStream.getAttribute(CharTermAttribute.class);
 
         List<String> words = new ArrayList<>();
@@ -325,6 +327,10 @@ public class SuggestionsBuilder extends AbstractComponent {
 
     @SuppressWarnings("unchecked")
     private Set<Suggestion> bigramSuggestions(String inputWord, SearchResponse searchResponse) {
+        if (searchResponse == null || searchResponse.getHits() == null || searchResponse.getHits().getHits() == null) {
+            return null;
+        }
+
         int inputWordLength = inputWord.length();
 
         Map<String, Suggestion> suggestionMap = new HashMap<>();
@@ -344,13 +350,15 @@ public class SuggestionsBuilder extends AbstractComponent {
             return null;
         }
 
-        SortedSet<Suggestion> suggestions = new TreeSet<>();
-        suggestions.addAll(suggestionMap.values());
-        return suggestions;
+        return suggestionSet(suggestionMap);
     }
 
     @SuppressWarnings("unchecked")
     private Set<Suggestion> unigramSuggestions(String inputWord, SearchResponse searchResponse) {
+        if (searchResponse == null || searchResponse.getHits() == null || searchResponse.getHits().getHits() == null) {
+            return null;
+        }
+
         int inputWordLength = inputWord.length();
 
         Map<String, Suggestion> suggestionMap = new HashMap<>();
@@ -368,8 +376,29 @@ public class SuggestionsBuilder extends AbstractComponent {
             return null;
         }
 
+        return suggestionSet(suggestionMap);
+    }
+
+    private SortedSet<Suggestion> suggestionSet(Map<String, Suggestion> suggestionMap) {
+        // todo: do this on a flag = strict, but for now we are doing for all
+        boolean hasExactMatch = false;
+        boolean hasEdgeGramMatch = false;
+        for (Suggestion suggestion : suggestionMap.values()) {
+            if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+                hasEdgeGramMatch = true;
+            } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+                hasExactMatch = true;
+            }
+        }
+
         SortedSet<Suggestion> suggestions = new TreeSet<>();
-        suggestions.addAll(suggestionMap.values());
+        for (Suggestion suggestion : suggestionMap.values()) {
+            if (!hasExactMatch && !hasEdgeGramMatch || suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact) {
+//                logger.info("Adding suggestion: {}", suggestion);
+                suggestions.add(suggestion);
+            }
+        }
+
         return suggestions;
     }
 

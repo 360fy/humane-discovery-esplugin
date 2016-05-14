@@ -497,6 +497,8 @@ public class HumaneQuery extends Query {
             return null;
         }
 
+        // TODO: problem is we are getting only single type, but search is multi-type
+        // TODO: and we want to filter out some types if certain keywords are not there
         String indexName = this.parseContext.index().name();
 
         if (indexName.contains(":search_query_store")) {
@@ -517,8 +519,7 @@ public class HumaneQuery extends Query {
                 return null;
             }
 
-//            logger.info("Suggestions Map: {}", suggestionsMap);
-//            logger.info("Disjuncts: {}", disjuncts);
+//            logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
 
             List<Query> queries = new ArrayList<>();
 
@@ -537,11 +538,14 @@ public class HumaneQuery extends Query {
                         Query termQuery = null;
                         if (suggestions != null) {
                             termQuery = this.multiFieldQuery(queryFields, token, false, numTokens, suggestions);
+                        } else if (indexName.contains("new_car_model_store") || indexName.contains("new_car_brand_store")) {
+                            return null;
                         }
 
                         key = key + "/joined";
                         suggestions = suggestionsMap.get(key);
                         Query joinedQuery = null;
+                        // TODO: either support this basis some flag... or some other way...
                         if (suggestions != null) {
                             // query in shingle field
                             joinedQuery = this.multiFieldQuery(queryFields, token, true, numTokens, suggestions);

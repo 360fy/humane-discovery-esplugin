@@ -33,21 +33,29 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
     private final IndicesService indicesService;
 
-    private final SuggestionsBuilder suggestionsBuilder;
+    private SuggestionsBuilder suggestionsBuilder;
 
     private final DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
 
     @Inject
-    public TransportDidYouMeanAction(Settings settings, String actionName, ThreadPool threadPool,
-                                     TransportService transportService, ClusterService clusterService, IndicesService indicesService,
-                                     ActionFilters actionFilters, IndexNameExpressionResolver indexNameExpressionResolver,
-                                     SuggestionsBuilder suggestionsBuilder) {
+    public void setSuggestionsBuilder(SuggestionsBuilder suggestionsBuilder) {
+        this.suggestionsBuilder = suggestionsBuilder;
+    }
+
+    @Inject
+    public TransportDidYouMeanAction(Settings settings,
+                                     String actionName,
+                                     ThreadPool threadPool,
+                                     TransportService transportService,
+                                     ClusterService clusterService,
+                                     IndicesService indicesService,
+                                     ActionFilters actionFilters,
+                                     IndexNameExpressionResolver indexNameExpressionResolver) {
         super(settings, actionName, threadPool, transportService, actionFilters, indexNameExpressionResolver, DidYouMeanRequest.class);
 
         this.clusterService = clusterService;
 //        this.client = client;
         this.indicesService = indicesService;
-        this.suggestionsBuilder = suggestionsBuilder;
     }
 
 //    @SuppressWarnings("unchecked")
@@ -298,6 +306,16 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
                 IndexService indexService = indicesService.indexService(inputIndices[0]);
 
+                if (indexService == null) {
+                    logger.error("IndexService is null for: {}", inputIndices[0]);
+                    throw new IOException("IndexService is null for: " + inputIndices[0]);
+                }
+
+                if (suggestionsBuilder == null) {
+                    logger.error("Suggestion Builder is not initialized");
+                    throw new IOException("SuggestionsBuilder not initialized");
+                }
+
                 List<String> words = suggestionsBuilder.tokens(indexService.analysisService(), didYouMeanRequest.query());
 
                 listener.onResponse(buildResponse(words, startTime, didYouMeanIndices));
@@ -305,7 +323,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
             @Override
             public void onFailure(Throwable t) {
-                logger.debug("failed to execute didYouMean", t);
+                logger.error("failed to execute didYouMean", t);
                 super.onFailure(t);
             }
         });

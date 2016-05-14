@@ -10,7 +10,7 @@ import org.elasticsearch.index.settings.IndexSettingsService;
 
 public class EdgeGramTokenFilterFactory extends AbstractTokenFilterFactory {
 
-    public static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 3;
+    public static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 2;
     public static final int DEFAULT_MAX_EDGE_GRAM_SIZE = 20;
 
     private final int minGram;

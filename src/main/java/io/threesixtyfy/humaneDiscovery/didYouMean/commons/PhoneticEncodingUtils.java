@@ -19,6 +19,15 @@ public class PhoneticEncodingUtils {
     private final CharTermAttribute phoneticTermAttribute = phoneticTokenFilter.getAttribute(CharTermAttribute.class);
 
     private Set<String> buildPhoneticEncodings(String word, Set<String> encodings, String prefix) {
+        // we do not add phonetic encodings for 2 or less size
+        if (word == null || word.length() <= 2) {
+            if (word != null) {
+                encodings.add(word);
+            }
+
+            return encodings;
+        }
+
         try {
             phoneticInputTokenStream.setValue(word);
 

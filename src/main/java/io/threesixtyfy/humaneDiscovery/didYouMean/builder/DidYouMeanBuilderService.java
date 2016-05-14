@@ -806,6 +806,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             TokenStream tokenStream = null;
             for (ParseContext.Document document : parsedDocument.docs()) {
                 for (IndexableField field : document.getFields()) {
+//                    logger.info("Parsing field: {}", field.name());
                     if (!field.name().endsWith(".humane")) {
                         continue;
                     }
