@@ -41,7 +41,7 @@ import java.util.Map;
 import java.util.Set;
 
 public class HumaneQuery extends Query {
-    private final ESLogger logger = Loggers.getLogger(HumaneQueryParser.class);
+    private final ESLogger logger = Loggers.getLogger(HumaneQuery.class);
 
     private static final String StandardQueryAnalyzerName = "humane_query_analyzer";
     private static final String StandardEdgeGramQueryAnalyzerName = "humane_edgeGram_query_analyzer";
@@ -519,7 +519,7 @@ public class HumaneQuery extends Query {
 
             logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
 
-            if (suggestionsMap.size() == 0) {
+            if (suggestionsMap == null || suggestionsMap.size() == 0) {
                 return null;
             }
 

@@ -190,6 +190,9 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
         Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
 
         Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
+        if (suggestionsMap == null) {
+            return new DidYouMeanResponse(Math.max(1, System.currentTimeMillis() - startTime));
+        }
 
         if (wordCount > 1) {
 //            MultiSearchResponse multiSearchResponse = (MultiSearchResponse) actionResponse;

@@ -11,9 +11,6 @@ import org.elasticsearch.action.search.MultiSearchResponse;
 import org.elasticsearch.action.search.SearchRequestBuilder;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.component.AbstractComponent;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.analysis.AnalysisService;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
@@ -87,6 +84,10 @@ public class SuggestionsBuilder {
 
     @SuppressWarnings("unchecked")
     public Map<String, Set<Suggestion>> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String... indices) {
+        if (conjuncts == null || conjuncts.size() == 0) {
+            return null;
+        }
+
         PhoneticEncodingUtils tokenEncodingUtility = new PhoneticEncodingUtils();
 
         Map<String, Set<String>> encodingCache = new HashMap<>();
@@ -146,7 +147,10 @@ public class SuggestionsBuilder {
         int requestSize = requestBuilders.size();
 
         ActionRequestBuilder searchRequestBuilder;
-        if (requestSize == 1) {
+
+        if (requestSize == 0) {
+            return null;
+        } else if (requestSize == 1) {
             // we fire only one request
             String queryKey = queryKeys.get(0);
             searchRequestBuilder = requestBuilders.get(0);
