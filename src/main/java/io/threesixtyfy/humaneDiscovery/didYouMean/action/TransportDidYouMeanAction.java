@@ -3,13 +3,13 @@ package io.threesixtyfy.humaneDiscovery.didYouMean.action;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
+import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
@@ -33,14 +33,11 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
     private final IndicesService indicesService;
 
-    private SuggestionsBuilder suggestionsBuilder;
+    private final Client client;
+
+    private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
 
     private final DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
-
-    @Inject
-    public void setSuggestionsBuilder(SuggestionsBuilder suggestionsBuilder) {
-        this.suggestionsBuilder = suggestionsBuilder;
-    }
 
     @Inject
     public TransportDidYouMeanAction(Settings settings,
@@ -50,11 +47,12 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                                      ClusterService clusterService,
                                      IndicesService indicesService,
                                      ActionFilters actionFilters,
-                                     IndexNameExpressionResolver indexNameExpressionResolver) {
+                                     IndexNameExpressionResolver indexNameExpressionResolver,
+                                     Client client) {
         super(settings, actionName, threadPool, transportService, actionFilters, indexNameExpressionResolver, DidYouMeanRequest.class);
 
         this.clusterService = clusterService;
-//        this.client = client;
+        this.client = client;
         this.indicesService = indicesService;
     }
 
@@ -191,7 +189,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
         Map<String, Conjunct> conjunctMap = new HashMap<>();
         Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
 
-        Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(conjunctMap.values(), didYouMeanIndex);
+        Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
 
         if (wordCount > 1) {
 //            MultiSearchResponse multiSearchResponse = (MultiSearchResponse) actionResponse;
@@ -261,26 +259,26 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 //            logger.info("======> Input Word: {}, Suggestions: {}", inputWord, suggestions);
 
             if (suggestions != null) {
-                boolean hasExactMatch = false;
-                boolean hasEdgeGramMatch = false;
-                for (Suggestion suggestion : suggestions) {
-                    if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
-                        hasEdgeGramMatch = true;
-                    } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
-                        hasExactMatch = true;
-                    }
-                }
+//                boolean hasExactMatch = false;
+//                boolean hasEdgeGramMatch = false;
+//                for (Suggestion suggestion : suggestions) {
+//                    if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+//                        hasEdgeGramMatch = true;
+//                    } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+//                        hasExactMatch = true;
+//                    }
+//                }
 
-                if (!hasExactMatch || hasEdgeGramMatch) {
-                    boolean finalHasEdgeGramMatch = hasEdgeGramMatch;
-                    DidYouMeanResult[] results = suggestions.stream()
-                            .filter(suggestion -> !finalHasEdgeGramMatch || (suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact))
-                            .map(Suggestion::getSuggestion)
-                            .map(DidYouMeanResult::new)
-                            .toArray(DidYouMeanResult[]::new);
+//                if (!hasExactMatch || hasEdgeGramMatch) {
+//                    boolean finalHasEdgeGramMatch = hasEdgeGramMatch;
+                DidYouMeanResult[] results = suggestions.stream()
+//                            .filter(suggestion -> !finalHasEdgeGramMatch || (suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact))
+                        .map(Suggestion::getSuggestion)
+                        .map(DidYouMeanResult::new)
+                        .toArray(DidYouMeanResult[]::new);
 
-                    return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
-                }
+                return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
+//                }
             }
         }
 
@@ -294,31 +292,31 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
         threadPool.executor(ThreadPool.Names.SEARCH).execute(new ActionRunnable<DidYouMeanResponse>(listener) {
             @Override
-            public void doRun() throws IOException {
-                ClusterState clusterState = clusterService.state();
+            protected void doRun() throws Exception {
+                try {
+                    ClusterState clusterState = clusterService.state();
 
-                String[] inputIndices = indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest);
+                    String[] inputIndices = indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest);
 
-                // resolve these too
-                String[] didYouMeanIndices = indexNameExpressionResolver.concreteIndices(clusterState,
-                        didYouMeanRequest.indicesOptions(),
-                        Arrays.stream(indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest)).map(value -> value + ":did_you_mean_store").toArray(String[]::new));
+                    // resolve these too
+                    String[] didYouMeanIndices = indexNameExpressionResolver.concreteIndices(clusterState,
+                            didYouMeanRequest.indicesOptions(),
+                            Arrays.stream(indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest)).map(value -> value + ":did_you_mean_store").toArray(String[]::new));
 
-                IndexService indexService = indicesService.indexService(inputIndices[0]);
+                    IndexService indexService = indicesService.indexService(inputIndices[0]);
 
-                if (indexService == null) {
-                    logger.error("IndexService is null for: {}", inputIndices[0]);
-                    throw new IOException("IndexService is null for: " + inputIndices[0]);
+                    if (indexService == null) {
+                        logger.error("IndexService is null for: {}", inputIndices[0]);
+                        throw new IOException("IndexService is not found for: " + inputIndices[0]);
+                    }
+
+                    List<String> words = suggestionsBuilder.tokens(indexService.analysisService(), didYouMeanRequest.query());
+
+                    listener.onResponse(buildResponse(words, startTime, didYouMeanIndices));
+                } catch (IOException e) {
+                    logger.error("failed to execute didYouMean", e);
+                    listener.onFailure(e);
                 }
-
-                if (suggestionsBuilder == null) {
-                    logger.error("Suggestion Builder is not initialized");
-                    throw new IOException("SuggestionsBuilder not initialized");
-                }
-
-                List<String> words = suggestionsBuilder.tokens(indexService.analysisService(), didYouMeanRequest.query());
-
-                listener.onResponse(buildResponse(words, startTime, didYouMeanIndices));
             }
 
             @Override

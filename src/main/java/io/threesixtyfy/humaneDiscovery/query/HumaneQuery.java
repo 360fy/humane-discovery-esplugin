@@ -19,6 +19,7 @@ import org.apache.lucene.search.join.ScoreMode;
 import org.apache.lucene.search.join.ToParentBlockJoinQuery;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.QueryBuilder;
+import org.elasticsearch.client.Client;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.lucene.search.Queries;
@@ -192,20 +193,20 @@ public class HumaneQuery extends Query {
 //        }
 //    }
 
-    public Query parse(SuggestionsBuilder suggestionsBuilder, QueryField field, Object value) throws IOException {
+    public Query parse(Client client, SuggestionsBuilder suggestionsBuilder, QueryField field, Object value) throws IOException {
         try {
             QueryField[] queryFields = {field};
 
-            return humaneQuery(suggestionsBuilder, queryFields, value.toString());
+            return humaneQuery(client, suggestionsBuilder, queryFields, value.toString());
         } catch (Throwable t) {
             logger.error("Error in creating humane query", t);
             throw t;
         }
     }
 
-    public Query parse(SuggestionsBuilder suggestionsBuilder, QueryField[] fields, Object value) throws IOException {
+    public Query parse(Client client, SuggestionsBuilder suggestionsBuilder, QueryField[] fields, Object value) throws IOException {
         try {
-            return humaneQuery(suggestionsBuilder, fields, value.toString());
+            return humaneQuery(client, suggestionsBuilder, fields, value.toString());
         } catch (Throwable t) {
             logger.error("Error in creating humane query", t);
             throw t;
@@ -487,7 +488,7 @@ public class HumaneQuery extends Query {
     }
 
     @SuppressWarnings("unchecked")
-    protected Query humaneQuery(SuggestionsBuilder suggestionsBuilder, QueryField[] queryFields, String queryText) throws IOException {
+    protected Query humaneQuery(Client client, SuggestionsBuilder suggestionsBuilder, QueryField[] queryFields, String queryText) throws IOException {
 
         List<String> tokens = suggestionsBuilder.tokens(this.parseContext.analysisService(), queryText);
 
@@ -514,12 +515,13 @@ public class HumaneQuery extends Query {
             Map<String, Conjunct> conjunctMap = new HashMap<>();
             Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
 
-            final Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(conjunctMap.values(), indexName + ":did_you_mean_store");
+            final Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(client, conjunctMap.values(), indexName + ":did_you_mean_store");
+
+            logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
+
             if (suggestionsMap.size() == 0) {
                 return null;
             }
-
-//            logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
 
             List<Query> queries = new ArrayList<>();
 

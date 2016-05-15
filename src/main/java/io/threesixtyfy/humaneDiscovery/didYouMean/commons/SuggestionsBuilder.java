@@ -32,22 +32,21 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-public class SuggestionsBuilder extends AbstractComponent {
+public class SuggestionsBuilder {
+
+    private static final SuggestionsBuilder instance = new SuggestionsBuilder();
 
     private final Map<Character, Character> similarCharacterMap = new HashMap<>();
 
     private final LevensteinDistance levensteinDistance = new LevensteinDistance();
 
-    private final Client client;
-
-    @Inject
-    public SuggestionsBuilder(Client client, Settings settings) {
-        super(settings);
-
-        this.client = client;
-
+    private SuggestionsBuilder() {
         similarCharacterMap.put('j', 'z');
         similarCharacterMap.put('z', 'j');
+    }
+
+    public static SuggestionsBuilder INSTANCE() {
+        return instance;
     }
 
     public List<String> tokens(AnalysisService analysisService, String query) throws IOException {
@@ -87,7 +86,7 @@ public class SuggestionsBuilder extends AbstractComponent {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Set<Suggestion>> fetchSuggestions(Collection<Conjunct> conjuncts, String... indices) {
+    public Map<String, Set<Suggestion>> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String... indices) {
         PhoneticEncodingUtils tokenEncodingUtility = new PhoneticEncodingUtils();
 
         Map<String, Set<String>> encodingCache = new HashMap<>();
