@@ -517,7 +517,7 @@ public class HumaneQuery extends Query {
 
             final Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(client, conjunctMap.values(), indexName + ":did_you_mean_store");
 
-            logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
+            // logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
 
             if (suggestionsMap == null || suggestionsMap.size() == 0) {
                 return null;
