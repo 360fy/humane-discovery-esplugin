@@ -37,6 +37,8 @@ public class HumaneQueryParser implements QueryParser {
 
     @Override
     public Query parse(QueryParseContext parseContext) throws IOException, QueryParsingException {
+        long startTime = System.currentTimeMillis();
+
         XContentParser parser = parseContext.parser();
 
         HumaneQuery humaneQuery = new HumaneQuery(parseContext);
@@ -106,7 +108,7 @@ public class HumaneQueryParser implements QueryParser {
             parseContext.addNamedQuery(queryName, query);
         }
 
-        logger.info("Query: {}", query);
+        logger.info("For queryText: {} and index: {} built query: {} in {}ms", queryText, parseContext.index().name(), query, (System.currentTimeMillis() - startTime));
 
         return query;
     }

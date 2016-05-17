@@ -34,6 +34,7 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -313,7 +314,7 @@ public class HumaneQuery extends Query {
     protected Query fieldQuery(QueryField field, String text, boolean shingle, int numTokens, Set<Suggestion> suggestions) {
         BooleanQuery.Builder fieldQueryBuilder = new BooleanQuery.Builder();
 
-        boolean noFuzzy = field.noFuzzy || numTokens == 1 && text.length() <= 3 || numTokens > 1 && text.length() <= 2;
+        boolean noFuzzy = field.noFuzzy || /*numTokens == 1 &&*/ text.length() <= 2 /*|| numTokens > 1 && text.length() <= 2*/;
 
 //        if (!noFuzzy) {
 //            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticAnalyzerNames), 0.15f * field.boost), BooleanClause.Occur.SHOULD);
@@ -328,12 +329,13 @@ public class HumaneQuery extends Query {
         fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, shingle, 100.0f * field.boost), BooleanClause.Occur.SHOULD);
         fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, shingle, 10.0f * field.boost), BooleanClause.Occur.SHOULD);
 
+        /*suggestion.getMatchLevel().getLevel() > MatchLevel.EdgeGram.getLevel()*/
         if (!noFuzzy && suggestions != null) {
-            for (Suggestion suggestion : suggestions) {
-                if (/*suggestion.getMatchLevel().getLevel() > MatchLevel.EdgeGram.getLevel()*/ !StringUtils.equals(suggestion.getSuggestion(), text)) {
-                    fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, suggestion.getSuggestion(), shingle, (1 - suggestion.getEditDistance() / 10.0f) * field.boost), BooleanClause.Occur.SHOULD);
-                }
-            }
+            suggestions
+                    .stream()
+                    .filter(suggestion -> !StringUtils.equals(suggestion.getSuggestion(), text))
+                    .forEach(suggestion ->
+                            fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, suggestion.getSuggestion(), shingle, (1 - suggestion.getEditDistance() / 10.0f) * field.boost), BooleanClause.Occur.SHOULD));
         }
 
         Query query = fieldQueryBuilder.build();
@@ -490,17 +492,25 @@ public class HumaneQuery extends Query {
     @SuppressWarnings("unchecked")
     protected Query humaneQuery(Client client, SuggestionsBuilder suggestionsBuilder, QueryField[] queryFields, String queryText) throws IOException {
 
+        long startTime = System.currentTimeMillis();
+
+        String indexName = this.parseContext.index().name();
+
+        Collection<String> queryTypesList = this.parseContext.queryTypes();
+        String[] queryTypes = null;
+        if (queryTypesList != null) {
+            queryTypes = queryTypesList.toArray(new String[queryTypesList.size()]);
+        }
+
         List<String> tokens = suggestionsBuilder.tokens(this.parseContext.analysisService(), queryText);
+
+        // logger.info("For Index/Type: {}/{} and queryText: {}, got Tokens: {} in {}ms", indexName, queryTypes, queryText, tokens, (System.currentTimeMillis() - startTime));
 
         int numTokens = tokens.size();
 
         if (numTokens == 0) {
             return null;
         }
-
-        // TODO: problem is we are getting only single type, but search is multi-type
-        // TODO: and we want to filter out some types if certain keywords are not there
-        String indexName = this.parseContext.index().name();
 
         if (indexName.contains(":search_query_store")) {
             Query[] queryNodes = new Query[numTokens];
@@ -512,12 +522,18 @@ public class HumaneQuery extends Query {
 
             return query(queryNodes, numTokens);
         } else {
+            startTime = System.currentTimeMillis();
+
             Map<String, Conjunct> conjunctMap = new HashMap<>();
             Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
 
+            // logger.info("For Index/Type: {}/{} and tokens: {}, got disjuncts: {} in {}ms", indexName, queryTypes, tokens, disjuncts, (System.currentTimeMillis() - startTime));
+
+            startTime = System.currentTimeMillis();
+
             final Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(client, conjunctMap.values(), indexName + ":did_you_mean_store");
 
-            // logger.info("For Index: {} Disjunct: {} -- Suggestions Map: {}", indexName, disjuncts, suggestionsMap);
+            // logger.info("For Index: {}/{} and disjuncts: {}, got suggestions: {} in {}ms", indexName, queryTypes, disjuncts, suggestionsMap, (System.currentTimeMillis() - startTime));
 
             if (suggestionsMap == null || suggestionsMap.size() == 0) {
                 return null;
@@ -527,11 +543,14 @@ public class HumaneQuery extends Query {
 
             for (Disjunct disjunct : disjuncts) {
                 // check if all conjuncts have suggestions ?
+                // logger.info("Building query for disjunct: {}", disjunct.getKey());
 
-                int count = 0;
+                int shouldClauseCount = 0;
+                int clauseCount = 0;
                 BooleanQuery.Builder disjunctQueryBuilder = new BooleanQuery.Builder();
                 for (Conjunct conjunct : disjunct.getConjuncts()) {
                     // depending on the conjunct length form a query
+                    // logger.info("Building query for conjunct: {}", conjunct.getKey());
                     if (conjunct.getLength() == 1) {
                         // we form normal query
                         String token = conjunct.getTokens().get(0);
@@ -539,19 +558,23 @@ public class HumaneQuery extends Query {
                         Set<Suggestion> suggestions = suggestionsMap.get(key);
                         Query termQuery = null;
                         if (suggestions != null) {
+                            // logger.info("Building term query for token: {}, conjunct: {}, key: {}, suggestions: {}", token, conjunct.getKey(), key, suggestions);
                             termQuery = this.multiFieldQuery(queryFields, token, false, numTokens, suggestions);
-                        } else if (indexName.contains("new_car_model_store") || indexName.contains("new_car_brand_store")) {
+                        } else if (queryTypes != null && queryTypes.length == 1 && (queryTypes[0].contains("new_car_model") || queryTypes[0].contains("new_car_brand"))) {
+                            // TODO: either support this basis some flag... or some other way...
+                            // logger.info("Returning null as no suggestions");
                             return null;
                         }
 
                         key = key + "/joined";
                         suggestions = suggestionsMap.get(key);
                         Query joinedQuery = null;
-                        // TODO: either support this basis some flag... or some other way...
+
                         if (suggestions != null) {
                             // query in shingle field
+                            // logger.info("Building joined query for token: {}, conjunct: {}, key: {}, suggestions: {}", token, conjunct.getKey(), key, suggestions);
                             joinedQuery = this.multiFieldQuery(queryFields, token, true, numTokens, suggestions);
-//                            logger.info("Joined Query: {}", joinedQuery);
+                            // logger.info("Joined Query: {}", joinedQuery);
                         }
 
                         if (termQuery != null && joinedQuery != null) {
@@ -559,13 +582,16 @@ public class HumaneQuery extends Query {
                             builder.add(termQuery, BooleanClause.Occur.SHOULD);
                             builder.add(joinedQuery, BooleanClause.Occur.SHOULD);
                             disjunctQueryBuilder.add(builder.build(), BooleanClause.Occur.SHOULD);
-                            count++;
+                            shouldClauseCount++;
+                            clauseCount++;
                         } else if (termQuery != null) {
                             disjunctQueryBuilder.add(termQuery, BooleanClause.Occur.SHOULD);
-                            count++;
+                            shouldClauseCount++;
+                            clauseCount++;
                         } else if (joinedQuery != null) {
                             disjunctQueryBuilder.add(joinedQuery, BooleanClause.Occur.SHOULD);
-                            count++;
+                            shouldClauseCount++;
+                            clauseCount++;
                         }
                     } else {
                         Query shingleQuery = null;
@@ -576,16 +602,18 @@ public class HumaneQuery extends Query {
                             Set<Suggestion> suggestions = suggestionsMap.get(key);
 
                             if (suggestions != null) {
+                                // logger.info("Building shingle query for token: {}, conjunct: {}, key: {}, suggestions: {}", shingleToken, conjunct.getKey(), key, suggestions);
                                 shingleQuery = this.multiFieldQuery(queryFields, shingleToken, true, numTokens, suggestions);
                             }
                         }
 
                         // if compound token exists we form a compound query
-                        String compoundToken = StringUtils.join(conjunct.getTokens());
+                        String compoundToken = StringUtils.join(conjunct.getTokens(), "");
                         String key = conjunct.getKey() + "/compound";
                         Set<Suggestion> suggestions = suggestionsMap.get(key);
                         Query compoundQuery = null;
                         if (suggestions != null) {
+                            // logger.info("Building compound query for token: {}, conjunct: {}, key: {}, suggestions: {}", compoundToken, conjunct.getKey(), key, suggestions);
                             compoundQuery = this.multiFieldQuery(queryFields, compoundToken, false, numTokens, suggestions);
                         }
 
@@ -594,20 +622,39 @@ public class HumaneQuery extends Query {
                             builder.add(shingleQuery, BooleanClause.Occur.SHOULD);
                             builder.add(compoundQuery, BooleanClause.Occur.SHOULD);
                             disjunctQueryBuilder.add(builder.build(), BooleanClause.Occur.MUST);
+                            clauseCount++;
                         } else if (compoundQuery != null) {
                             disjunctQueryBuilder.add(compoundQuery, BooleanClause.Occur.MUST);
+                            clauseCount++;
                         } else if (shingleQuery != null) {
                             disjunctQueryBuilder.add(shingleQuery, BooleanClause.Occur.MUST);
+                            clauseCount++;
                         }
                     }
                 }
 
-                disjunctQueryBuilder.setMinimumNumberShouldMatch(minimumShouldMatch(count));
+                if (shouldClauseCount > 0) {
+                    int minimumNumberShouldMatch = 0;
+                    // TODO: another way is let all the results come in, as normal... but determine the level based on tokens in the query
+                    if (queryTypes != null && queryTypes.length == 1 && (queryTypes[0].contains("new_car_model") || queryTypes[0].contains("new_car_brand"))) {
+                        // all tokens are required
+                        minimumNumberShouldMatch = shouldClauseCount;
+                    } else {
+                        minimumNumberShouldMatch = minimumShouldMatch(shouldClauseCount);
 
-                queries.add(disjunctQueryBuilder.build());
+                    }
+                    // logger.info("Setting {} should clauses setting min required count:  - {}", shouldClauseCount, minimumNumberShouldMatch);
+                    disjunctQueryBuilder.setMinimumNumberShouldMatch(minimumNumberShouldMatch);
+                }
+
+                if (clauseCount > 0) {
+                    queries.add(disjunctQueryBuilder.build());
+                }
             }
 
             if (queries.size() == 0) {
+                return null;
+            } else if (queries.size() == 1) {
                 return queries.get(0);
             }
 

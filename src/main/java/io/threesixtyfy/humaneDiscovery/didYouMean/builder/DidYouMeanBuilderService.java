@@ -410,7 +410,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                         pollerParked.set(false);
                     } else {
                         idleWaitCount = 0;
-                        // logger.info("parking poller");
+                        logger.info("parking poller for long...");
                         LockSupport.park(poller);
                     }
 

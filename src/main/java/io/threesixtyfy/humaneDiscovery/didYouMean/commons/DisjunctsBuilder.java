@@ -7,6 +7,7 @@ import java.util.Set;
 
 public class DisjunctsBuilder {
 
+    // TODO: add key prefix for both disjunct and conjunct... key prefix would typically be the index
     public Set<Disjunct> build(List<String> tokens, Map<String, Conjunct> uniqueConjuncts) {
         int size = tokens.size();
 
