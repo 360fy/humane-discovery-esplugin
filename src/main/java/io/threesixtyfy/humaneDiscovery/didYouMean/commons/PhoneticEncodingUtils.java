@@ -18,13 +18,13 @@ public class PhoneticEncodingUtils {
     private final HumaneTokenFilter phoneticTokenFilter = new HumaneTokenFilter(phoneticInputTokenStream);
     private final CharTermAttribute phoneticTermAttribute = phoneticTokenFilter.getAttribute(CharTermAttribute.class);
 
-    private Set<String> buildPhoneticEncodings(String word, Set<String> encodings, String prefix) {
-        // we do not add phonetic encodings for 2 or less size
-        if (word == null || word.length() <= 2) {
-            if (word != null) {
-                encodings.add(word);
-            }
+    private Set<String> buildPhoneticEncodings(String word, Set<String> encodings, String prefix, boolean stopWord) {
+        if (word != null) {
+            encodings.add(word);
+        }
 
+        // we do not add phonetic encodings for 2 or less size
+        if (word == null || word.length() <= 2 || stopWord) {
             return encodings;
         }
 
@@ -53,12 +53,12 @@ public class PhoneticEncodingUtils {
         return encodings;
     }
 
-    public Set<String> buildEncodings(String word, Set<String> encodings) {
-        return buildPhoneticEncodings(word, encodings, null);
+    public Set<String> buildEncodings(String word, Set<String> encodings, boolean stopWord) {
+        return buildPhoneticEncodings(word, encodings, null, stopWord);
     }
 
-    public Set<String> buildEncodings(String word) {
-        return this.buildEncodings(word, new HashSet<>());
+    public Set<String> buildEncodings(String word, boolean stopWord) {
+        return this.buildEncodings(word, new HashSet<>(), stopWord);
     }
 }
 

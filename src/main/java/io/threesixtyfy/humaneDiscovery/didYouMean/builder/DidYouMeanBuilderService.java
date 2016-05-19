@@ -447,13 +447,13 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                             BigramWordAggregateInfo bigramWordAggregateInfo = new BigramWordAggregateInfo(indexName, word1, word2);
 
                             // do it for word 1 phonetic encodings
-                            phoneticEncodingUtils.buildEncodings(word, bigramWordAggregateInfo.encodings);
+                            phoneticEncodingUtils.buildEncodings(word, bigramWordAggregateInfo.encodings, false);
 
                             // do it for word 1 phonetic encodings
-                            phoneticEncodingUtils.buildEncodings(word1, bigramWordAggregateInfo.word1Encodings);
+                            phoneticEncodingUtils.buildEncodings(word1, bigramWordAggregateInfo.word1Encodings, false);
 
                             // do it for word2 phonetic encodings
-                            phoneticEncodingUtils.buildEncodings(word2, bigramWordAggregateInfo.word2Encodings);
+                            phoneticEncodingUtils.buildEncodings(word2, bigramWordAggregateInfo.word2Encodings, false);
 
                             wordAggregateInfo = bigramWordAggregateInfo;
                         } else {
@@ -464,7 +464,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                         Map<String, Object> getResponse = client.get(getRequest).actionGet().getSourceAsMap();
                         if (getResponse == null) {
                             wordAggregateInfo = new WordAggregateInfo(indexName, word);
-                            phoneticEncodingUtils.buildEncodings(word, wordAggregateInfo.encodings);
+                            phoneticEncodingUtils.buildEncodings(word, wordAggregateInfo.encodings, false);
                         } else {
                             wordAggregateInfo = WordAggregateInfo.unmap(indexName, getResponse);
                         }
@@ -802,7 +802,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         }
 
         private void add(ParsedDocument parsedDocument) {
-            EdgeGramEncodingUtils edgeGramEncodingUtils = new EdgeGramEncodingUtils();
+            EdgeGramEncodingUtils edgeGramEncodingUtils = new EdgeGramEncodingUtils(1);
             TokenStream tokenStream = null;
             for (ParseContext.Document document : parsedDocument.docs()) {
                 for (IndexableField field : document.getFields()) {
@@ -834,8 +834,10 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                             }
 
                             for (String edgeGram : edgeGramEncodingUtils.buildEncodings(word)) {
-                                wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), edgeGram, fieldName, true, word));
-                                queuedWordCount.addAndGet(1);
+                                if (edgeGram.length() > 1) {
+                                    wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), edgeGram, fieldName, true, word));
+                                    queuedWordCount.addAndGet(1);
+                                }
 
                                 if (previousWord != null) {
                                     wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, edgeGram, fieldName, true, previousWord + word));

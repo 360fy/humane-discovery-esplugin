@@ -9,7 +9,6 @@ import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
 import org.elasticsearch.index.analysis.CustomAnalyzer;
 import org.elasticsearch.index.analysis.LowerCaseTokenFilterFactory;
 import org.elasticsearch.index.analysis.StandardTokenizerFactory;
-import org.elasticsearch.index.analysis.StopTokenFilterFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 import org.elasticsearch.index.settings.IndexSettingsService;
 
@@ -23,8 +22,8 @@ public class HumaneQueryAnalyzerProvider extends AbstractIndexAnalyzerProvider<C
         customAnalyzer = new CustomAnalyzer(new StandardTokenizerFactory(index, indexSettingsService, name, settings),
                 null,
                 new TokenFilterFactory[]{
-                        new LowerCaseTokenFilterFactory(index, indexSettingsService, name, settings),
-                        new StopTokenFilterFactory(index, indexSettingsService, env, name, settings)
+                        new LowerCaseTokenFilterFactory(index, indexSettingsService, name, settings)
+//                        new StopTokenFilterFactory(index, indexSettingsService, env, name, settings)
                 });
     }
 

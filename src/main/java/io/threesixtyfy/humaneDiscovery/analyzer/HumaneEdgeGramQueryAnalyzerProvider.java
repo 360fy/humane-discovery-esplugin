@@ -25,7 +25,7 @@ public class HumaneEdgeGramQueryAnalyzerProvider extends AbstractIndexAnalyzerPr
                 null,
                 new TokenFilterFactory[]{
                         new LowerCaseTokenFilterFactory(index, indexSettingsService, name, settings),
-                        new StopTokenFilterFactory(index, indexSettingsService, env, name, settings),
+//                        new StopTokenFilterFactory(index, indexSettingsService, env, name, settings),
                         new PrefixTokenFilterFactory(index, indexSettingsService, name,
                                 Settings.builder().put("value", "e#")
                                         .build())

@@ -3,7 +3,9 @@ package io.threesixtyfy.humaneDiscovery.didYouMean.action;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionSet;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
@@ -189,7 +191,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
         Map<String, Conjunct> conjunctMap = new HashMap<>();
         Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
 
-        Map<String, Set<Suggestion>> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
+        Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
         if (suggestionsMap == null) {
             return new DidYouMeanResponse(Math.max(1, System.currentTimeMillis() - startTime));
         }
@@ -256,32 +258,31 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 //            );
 
             String inputWord = tokens.get(0);
-            Set<Suggestion> suggestions = suggestionsMap.get(inputWord);
+            SuggestionSet suggestionSet = suggestionsMap.get(inputWord);
 
+//            logger.info("======> Input Word: {}, Suggestions: {}", inputWord, suggestionSet);
 
-//            logger.info("======> Input Word: {}, Suggestions: {}", inputWord, suggestions);
+            if (suggestionSet != null && suggestionSet.getSuggestions() != null) {
+                boolean hasExactMatch = false;
+                boolean hasEdgeGramMatch = false;
+                for (Suggestion suggestion : suggestionSet.getSuggestions()) {
+                    if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+                        hasEdgeGramMatch = true;
+                    } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+                        hasExactMatch = true;
+                    }
+                }
 
-            if (suggestions != null) {
-//                boolean hasExactMatch = false;
-//                boolean hasEdgeGramMatch = false;
-//                for (Suggestion suggestion : suggestions) {
-//                    if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
-//                        hasEdgeGramMatch = true;
-//                    } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
-//                        hasExactMatch = true;
-//                    }
-//                }
-
-//                if (!hasExactMatch || hasEdgeGramMatch) {
+                if (!hasExactMatch || hasEdgeGramMatch) {
 //                    boolean finalHasEdgeGramMatch = hasEdgeGramMatch;
-                DidYouMeanResult[] results = suggestions.stream()
+                    DidYouMeanResult[] results = suggestionSet.getSuggestions().stream()
 //                            .filter(suggestion -> !finalHasEdgeGramMatch || (suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact))
-                        .map(Suggestion::getSuggestion)
-                        .map(DidYouMeanResult::new)
-                        .toArray(DidYouMeanResult[]::new);
+                            .map(Suggestion::getSuggestion)
+                            .map(DidYouMeanResult::new)
+                            .toArray(DidYouMeanResult[]::new);
 
-                return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
-//                }
+                    return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
+                }
             }
         }
 

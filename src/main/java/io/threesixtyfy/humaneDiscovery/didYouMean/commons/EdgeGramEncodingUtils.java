@@ -14,9 +14,19 @@ public class EdgeGramEncodingUtils {
 
     private final ESLogger logger = Loggers.getLogger(EdgeGramEncodingUtils.class);
 
-    private final StringTokenStream edgeGramInputTokenStream = new StringTokenStream();
-    private final EdgeNGramTokenFilter edgeGramTokenFilter = new EdgeNGramTokenFilter(edgeGramInputTokenStream, 2, 20);
-    private final CharTermAttribute edgeGramTermAttribute = edgeGramTokenFilter.getAttribute(CharTermAttribute.class);
+    private final StringTokenStream edgeGramInputTokenStream;
+    private final EdgeNGramTokenFilter edgeGramTokenFilter;
+    private final CharTermAttribute edgeGramTermAttribute;
+
+    public EdgeGramEncodingUtils() {
+        this(2);
+    }
+
+    public EdgeGramEncodingUtils(int minSize) {
+        edgeGramInputTokenStream = new StringTokenStream();
+        edgeGramTokenFilter = new EdgeNGramTokenFilter(edgeGramInputTokenStream, minSize, 20);
+        edgeGramTermAttribute = edgeGramTokenFilter.getAttribute(CharTermAttribute.class);
+    }
 
     private Set<String> buildEdgeGramEncodings(String word, Set<String> encodings, String prefix) {
         try {

@@ -3,6 +3,7 @@ package io.threesixtyfy.humaneDiscovery.didYouMean.commons;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -20,8 +21,10 @@ import org.elasticsearch.search.SearchHit;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,9 +37,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static org.apache.commons.lang3.StringUtils.join;
 
 public class SuggestionsBuilder {
 
@@ -48,19 +50,32 @@ public class SuggestionsBuilder {
 
     private final LevensteinDistance levensteinDistance = new LevensteinDistance();
 
-    private final Cache<String, CompletableFuture<Set<Suggestion>>> CachedCompletableResponses = CacheBuilder
+    private final Set<String> StopWords = new HashSet<>(Arrays.asList(
+            /*"a",*/ "an", "and", "are", "as", "at", "be", "but", "by",
+            "for", "if", /*"in",*/ "into", "is", "it",
+            "no", "not", "of", "on", "or", "such",
+            "that", "the", "their", "then", "there", "these",
+            "they", "this", "to", "was", "will", "with"
+    ));
+
+    private final CompletableFuture<SuggestionSet> NumberSuggestion = new CompletableFuture<>();
+
+    private final Cache<String, CompletableFuture<SuggestionSet>> CachedCompletableResponses = CacheBuilder
             .newBuilder()
-            .maximumSize(200)
+            .maximumSize(1000)
+            .expireAfterAccess(10, TimeUnit.SECONDS)
             .build();
 
     private final Cache<String, Set<String>> CachedEncodings = CacheBuilder
             .newBuilder()
-            .maximumSize(200)
+            .maximumSize(1000)
             .build();
 
     private final ExecutorService futureExecutorService = new ThreadPoolExecutor(5, 5, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(100));
 
     private SuggestionsBuilder() {
+        NumberSuggestion.complete(new SuggestionSet(true, false, null));
+
         similarCharacterMap.put('j', 'z');
         similarCharacterMap.put('z', 'j');
     }
@@ -91,12 +106,18 @@ public class SuggestionsBuilder {
         return words;
     }
 
-    private Set<String> encodings(PhoneticEncodingUtils tokenEncodingUtility, String token) throws ExecutionException {
-        return CachedEncodings.get(token, () -> {
-            logger.info("Building encoding for token: {}", token);
+    private Set<String> encodings(PhoneticEncodingUtils tokenEncodingUtility, String token, boolean stopWord) {
+        try {
+            return CachedEncodings.get(token, () -> {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Building encoding for token: {}", token);
+                }
 
-            return tokenEncodingUtility.buildEncodings(token);
-        });
+                return tokenEncodingUtility.buildEncodings(token, stopWord);
+            });
+        } catch (ExecutionException e) {
+            return null;
+        }
     }
 
     private String bigram(String word1, String word2) {
@@ -117,8 +138,10 @@ public class SuggestionsBuilder {
         });
 
         int clauses = 1 + phoneticEncodings.size();
-        if (clauses > 2) {
+        if (clauses >= 2) {
             boolQueryBuilder.minimumNumberShouldMatch(2);
+        } else {
+            boolQueryBuilder.minimumNumberShouldMatch(clauses);
         }
 
         return boolQueryBuilder;
@@ -182,7 +205,7 @@ public class SuggestionsBuilder {
     }
 
     @SuppressWarnings("unchecked")
-    private void buildSuggestion(Map<String, Object> source, String inputWord, String suggestedWord, int inputWordLength, Map<String, Suggestion> suggestionMap) {
+    private void buildSuggestion(Map<String, Object> source, String inputWord, String suggestedWord, int inputWordLength, boolean ignorePrefixSuggestions, Map<String, Suggestion> suggestionMap) {
         int totalCount = (int) source.get("totalCount");
         int countAsFullWord = (int) source.get("countAsFullWord");
 
@@ -192,12 +215,22 @@ public class SuggestionsBuilder {
         MatchLevel matchLevel = MatchLevel.Exact;
 
         if (!inputWord.equals(suggestedWord)) {
+            // suggested word is prefix of input word
+            if (ignorePrefixSuggestions && inputWord.startsWith(suggestedWord)) {
+                return;
+            }
+
             // we have exact match here
             // we select the word with proper edit distance
             distance = StringUtils.getLevenshteinDistance(suggestedWord, inputWord);
             similarity = getFuzzyDistance(suggestedWord, inputWord, Locale.ENGLISH);
 
-            matchLevel = MatchLevel.Phonetic;
+            // if input is prefix of suggested word
+            if (suggestedWord.startsWith(inputWord)) {
+                matchLevel = MatchLevel.EdgeGram;
+            } else {
+                matchLevel = MatchLevel.Phonetic;
+            }
         }
 
         float similarityPercentage = Math.round(similarity * 10.0f / inputWordLength);
@@ -205,9 +238,11 @@ public class SuggestionsBuilder {
         double jwDistance = StringUtils.getJaroWinklerDistance(inputWord, suggestedWord);
         double lDistance = levensteinDistance.getDistance(inputWord, suggestedWord);
 
-//        logger.info(">>>>>>>>> For input: {}, found suggestion: {}, originalWords: {} with similarity: {}, edit: {}, JWD:{}, LD:{}",
-//                inputWord, suggestedWord, source.get("originalWords"),
-//                similarityPercentage, editDistancePercentage, jwDistance, lDistance);
+        if (logger.isDebugEnabled()) {
+            logger.debug("For input: {}, found suggestion: {}, originalWords: {} with similarity: {}, edit: {}, JWD:{}, LD:{}",
+                    inputWord, suggestedWord, source.get("originalWords"),
+                    similarityPercentage, editDistancePercentage, jwDistance, lDistance);
+        }
 
         // anything with more than 5.0 edit distance we ignore right away
         if (editDistancePercentage > 4.0 || similarity < 4.0 && jwDistance < 0.75 && lDistance < 0.75) {
@@ -255,7 +290,7 @@ public class SuggestionsBuilder {
                 continue;
             }
 
-            buildSuggestion(source, inputWord, suggestedWord, inputWordLength, suggestionMap);
+            buildSuggestion(source, inputWord, suggestedWord, inputWordLength, false, suggestionMap);
         }
 
         if (suggestionMap.size() == 0) {
@@ -266,7 +301,7 @@ public class SuggestionsBuilder {
     }
 
     @SuppressWarnings("unchecked")
-    private Set<Suggestion> wordSuggestions(String inputWord, SearchResponse searchResponse) {
+    private Set<Suggestion> wordSuggestions(String inputWord, SearchResponse searchResponse, boolean ignorePrefixSuggestions) {
         if (searchResponse == null || searchResponse.getHits() == null || searchResponse.getHits().getHits() == null) {
             return null;
         }
@@ -281,7 +316,7 @@ public class SuggestionsBuilder {
 
             String suggestedWord = (String) source.get("word");
 
-            buildSuggestion(source, inputWord, suggestedWord, inputWordLength, suggestionMap);
+            buildSuggestion(source, inputWord, suggestedWord, inputWordLength, ignorePrefixSuggestions, suggestionMap);
         }
 
         if (suggestionMap.size() == 0) {
@@ -306,7 +341,7 @@ public class SuggestionsBuilder {
         SortedSet<Suggestion> suggestions = new TreeSet<>();
         for (Suggestion suggestion : suggestionMap.values()) {
             if (!hasExactMatch && !hasEdgeGramMatch || suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact) {
-                // logger.info("Adding suggestion: {}", suggestion);
+                // logger.debug("Adding suggestion: {}", suggestion);
                 suggestions.add(suggestion);
             }
         }
@@ -320,7 +355,7 @@ public class SuggestionsBuilder {
             Suggestion existingSuggestion = suggestionMap.get(key);
             int ret = suggestion.compareTo(existingSuggestion);
             if (ret >= 0) {
-                // logger.info("Not adding suggestion {} as better {}", suggestion, existingSuggestion);
+                // logger.debug("Not adding suggestion {} as better {}", suggestion, existingSuggestion);
                 return;
             }
         }
@@ -328,7 +363,7 @@ public class SuggestionsBuilder {
         suggestionMap.put(key, suggestion);
     }
 
-    public Map<String, Set<Suggestion>> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String... indices) {
+    public Map<String, SuggestionSet> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String... indices) {
         SuggestionBuilderTask task = new SuggestionBuilderTask(client, indices);
 
         try {
@@ -349,22 +384,41 @@ public class SuggestionsBuilder {
 
         final List<String> queryKeys = new ArrayList<>();
         final Map<String, String> queryKeyToWordMap = new HashMap<>();
-        final List<CompletableFuture<Set<Suggestion>>> suggestionResponses = new ArrayList<>();
+        final List<CompletableFuture<SuggestionSet>> suggestionResponses = new ArrayList<>();
 
         public SuggestionBuilderTask(Client client, String... indices) {
             this.client = client;
             this.indices = indices;
-            id = StringUtils.join(this.indices,"/");
+            id = StringUtils.join(this.indices, "/");
         }
 
-        private void store(String key, String word, CompletableFuture<Set<Suggestion>> future) {
+        private CompletableFuture<SuggestionSet> store(String key, String word, CompletableFuture<SuggestionSet> future) {
             queryKeys.add(key);
             queryKeyToWordMap.put(key, word);
             suggestionResponses.add(future);
+
+            return future;
         }
 
-        private CompletableFuture<Set<Suggestion>> future(String key, String word, QueryBuilder queryBuilder) {
-            logger.info("Building future for key: {}, word: {} indices: {}", key, word, indices);
+        private CompletableFuture<SuggestionSet> getOrBuildFuture(String key, String word, Function<Boolean, QueryBuilder> builder) throws ExecutionException {
+            boolean number = NumberUtils.isNumber(word);
+
+            // we do not store these... as re-calculating them would not be that costly
+            if (number) {
+                return store(key, word, NumberSuggestion);
+            }
+
+            boolean stopWord = StopWords.contains(word);
+
+            CompletableFuture<SuggestionSet> future = CachedCompletableResponses.get(key(key), () -> future(key, word, stopWord, builder.apply(stopWord)));
+
+            return store(key, word, future);
+        }
+
+        private CompletableFuture<SuggestionSet> future(String key, String word, boolean stopWord, QueryBuilder queryBuilder) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Building future for key: {}, word: {} indices: {}", key, word, indices);
+            }
 
             return CompletableFuture
                     .supplyAsync(() -> client.prepareSearch(indices).setQuery(queryBuilder).execute().actionGet(500, TimeUnit.MILLISECONDS), futureExecutorService)
@@ -378,88 +432,91 @@ public class SuggestionsBuilder {
                         if (key.endsWith("/joined")) {
                             suggestions = joinedWordSuggestions(word, searchResponse);
                         } else {
-                            suggestions = wordSuggestions(word, searchResponse);
+                            boolean ignorePrefixSuggestions = key.endsWith("/compoundUni") || key.endsWith("/compoundBi");
+
+                            suggestions = wordSuggestions(word, searchResponse, ignorePrefixSuggestions);
                         }
 
-                        return suggestions;
+                        return new SuggestionSet(false, stopWord, suggestions);
                     });
+        }
+        
+        private void unigramWordMatch(Conjunct conjunct, String key, String word) throws ExecutionException {
+            getOrBuildFuture(key, word, (stopWord) -> {
+                Set<String> encodings = encodings(tokenEncodingUtility, word, stopWord);
+
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Encoding for word {} = {}", word, encodings);
+                }
+
+                return buildWordQuery(Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
+            });
         }
 
         private void unigramWordMatch(Conjunct conjunct) throws ExecutionException {
             String key = conjunct.getKey();
             String word = conjunct.getTokens().get(0);
 
-            CompletableFuture<Set<Suggestion>> future = CachedCompletableResponses.get(key(key), () -> {
-                Set<String> encodings = encodings(tokenEncodingUtility, word);
-
-                QueryBuilder queryBuilder = buildWordQuery(Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
-
-                return future(key, word, queryBuilder);
-            });
-
-            store(key, word, future);
+            unigramWordMatch(conjunct, key, word);            
         }
 
         private void joinedWordMatch(Conjunct conjunct) throws ExecutionException {
             String key = conjunct.getKey() + "/joined";
             String word = conjunct.getTokens().get(0);
 
-            CompletableFuture<Set<Suggestion>> future = CachedCompletableResponses.get(key(key), () -> {
-                Set<String> encodings = encodings(tokenEncodingUtility, word);
+            getOrBuildFuture(key, word, (stopWord) -> {
+                Set<String> encodings = encodings(tokenEncodingUtility, word, stopWord);
 
-                QueryBuilder queryBuilder = buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Encoding for word {} = {}", word, encodings);
+                }
 
-                return future(key, word, queryBuilder);
+                return buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
             });
-
-            store(key, word, future);
         }
 
         private void shingleWordMatch(Conjunct conjunct) throws ExecutionException {
-            if (conjunct.getLength() == 2) {
-                // we can form bigram query for these
-                String word1 = conjunct.getTokens().get(0);
-                String word2 = conjunct.getTokens().get(1);
+            //if (conjunct.getLength() == 2) {
+            // we can form bigram query for these
+            String word1 = conjunct.getTokens().get(0);
+            String word2 = conjunct.getTokens().get(1);
 
-                String key = conjunct.getKey() + "/shingle";
-                String word = bigram(word1, word2);
+            String key = conjunct.getKey() + "/shingle";
+            String word = bigram(word1, word2);
 
-                CompletableFuture<Set<Suggestion>> future = CachedCompletableResponses.get(key(key), () -> {
-                    Set<String> word1Encodings = encodings(tokenEncodingUtility, word1);
-                    Set<String> word2Encodings = encodings(tokenEncodingUtility, word2);
+            getOrBuildFuture(key, word, (stopWord) -> {
+                Set<String> word1Encodings = encodings(tokenEncodingUtility, word1, stopWord);
+                Set<String> word2Encodings = encodings(tokenEncodingUtility, word2, stopWord);
 
-                    QueryBuilder queryBuilder = QueryBuilders.boolQuery()
-                            .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word1Encodings", word1, word1Encodings))
-                            .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word2Encodings", word2, word2Encodings));
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Encoding for word 1 {} = {}", word1, word1Encodings);
+                    logger.debug("Encoding for word 2 {} = {}", word2, word2Encodings);
+                }
 
-                    return future(key, word, queryBuilder);
-                });
-
-                store(key, word, future);
-            }
+                return QueryBuilders.boolQuery()
+                        .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word1Encodings", word1, word1Encodings))
+                        .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word2Encodings", word2, word2Encodings));
+            });
+            //}
         }
 
         @SuppressWarnings("unchecked")
         private void compoundWordMatch(Conjunct conjunct) throws ExecutionException {
-            String key = conjunct.getKey() + "/compound";
-            String word = join(conjunct.getTokens());
+            String key = conjunct.getKey() + "/compoundUni";
+            String word = StringUtils.join(conjunct.getTokens(), "");
+            
+            unigramWordMatch(conjunct, key, word);
 
-            CompletableFuture<Set<Suggestion>> future = CachedCompletableResponses.get(key(key), () -> {
-                Set<String> encodings = encodings(tokenEncodingUtility, word);
+            key = conjunct.getKey() + "/compoundBi";
 
-                QueryBuilder queryBuilder = buildWordQuery(Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
-
-                return future(key, word, queryBuilder);
-            });
-
-            store(key, word, future);
+            unigramWordMatch(conjunct, key, word);
         }
 
         private String key(String key) {
             return id + "/" + key;
         }
 
-        public Map<String, Set<Suggestion>> fetchSuggestions(Collection<Conjunct> conjuncts) throws ExecutionException, InterruptedException {
+        public Map<String, SuggestionSet> fetchSuggestions(Collection<Conjunct> conjuncts) throws ExecutionException, InterruptedException {
             if (conjuncts == null || conjuncts.size() == 0) {
                 return null;
             }
@@ -476,17 +533,19 @@ public class SuggestionsBuilder {
                 }
             }
 
-            CompletableFuture<List<Set<Suggestion>>> allResponses = sequence(suggestionResponses);
+            CompletableFuture<List<SuggestionSet>> allResponses = sequence(suggestionResponses);
 
-            logger.info("For conjuncts: {} and indices: {} build completable search responses: {} in {}ms", conjuncts, indices, suggestionResponses, (System.currentTimeMillis() - startTime));
+            if (logger.isDebugEnabled()) {
+                logger.debug("For conjuncts: {} and indices: {} build completable search responses: {} in {}ms", conjuncts, indices, suggestionResponses, (System.currentTimeMillis() - startTime));
+            }
 
             startTime = System.currentTimeMillis();
 
-            Map<String, Set<Suggestion>> suggestionsMap = allResponses.thenApply(responses -> {
-                Map<String, Set<Suggestion>> map = new HashMap<>();
+            Map<String, SuggestionSet> suggestionsMap = allResponses.thenApply(responses -> {
+                Map<String, SuggestionSet> map = new HashMap<>();
 
                 int index = 0;
-                for (Set<Suggestion> suggestions : responses) {
+                for (SuggestionSet suggestions : responses) {
                     map.put(queryKeys.get(index), suggestions);
                     index++;
                 }
@@ -494,7 +553,9 @@ public class SuggestionsBuilder {
                 return map;
             }).get();
 
-            logger.info("For conjuncts: {} and indices: {} created suggestions: {} in {}ms", conjuncts, indices, suggestionsMap, (System.currentTimeMillis() - startTime));
+            if (logger.isDebugEnabled()) {
+                logger.debug("For conjuncts: {} and indices: {} created suggestions: {} in {}ms", conjuncts, indices, suggestionsMap, (System.currentTimeMillis() - startTime));
+            }
 
             return suggestionsMap;
         }

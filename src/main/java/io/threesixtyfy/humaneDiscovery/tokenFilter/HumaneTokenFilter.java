@@ -78,7 +78,7 @@ public class HumaneTokenFilter extends TokenFilter {
             // pass through less-than-3-length terms
             if (this.termAtt.length() < 3) {
                 this.resetState();
-                return true;
+                return false;
             }
 
             this.resetState();
