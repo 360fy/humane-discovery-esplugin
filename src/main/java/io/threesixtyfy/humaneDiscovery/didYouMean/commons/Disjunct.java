@@ -5,9 +5,9 @@ import java.util.List;
 
 public class Disjunct {
     final String key;
-    final List<Conjunct> conjuncts;
+    final Conjunct[] conjuncts;
 
-    public Disjunct(String key, List<Conjunct> conjuncts) {
+    public Disjunct(String key, Conjunct[] conjuncts) {
         this.key = key;
         this.conjuncts = conjuncts;
     }
@@ -20,7 +20,7 @@ public class Disjunct {
         return key;
     }
 
-    public List<Conjunct> getConjuncts() {
+    public Conjunct[] getConjuncts() {
         return conjuncts;
     }
 
@@ -60,7 +60,7 @@ public class Disjunct {
         }
 
         public Disjunct build() {
-            return new Disjunct(this.disjunctKey.toString(), this.conjuncts);
+            return new Disjunct(this.disjunctKey.toString(), this.conjuncts.toArray(new Conjunct[this.conjuncts.size()]));
         }
     }
 }

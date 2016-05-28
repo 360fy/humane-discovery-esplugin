@@ -19,12 +19,40 @@ public class PhoneticEncodingUtils {
     private final CharTermAttribute phoneticTermAttribute = phoneticTokenFilter.getAttribute(CharTermAttribute.class);
 
     private Set<String> buildPhoneticEncodings(String word, Set<String> encodings, String prefix, boolean stopWord) {
-        if (word != null) {
-            encodings.add(word);
+        if (word == null) {
+            return encodings;
         }
 
+        encodings.add(word);
+
+        int wordLength = word.length();
+
         // we do not add phonetic encodings for 2 or less size
-        if (word == null || word.length() <= 2 || stopWord) {
+        if (wordLength == 1 || stopWord) {
+            return encodings;
+        }
+
+        int minGram = getMin(wordLength);
+        int maxGram = getMax(wordLength);
+
+        for (int ng = minGram; ng <= maxGram; ng++) {
+            String end = null;
+            for (int i = 0; i < wordLength - ng + 1; i++) {
+                String gram = word.substring(i, i + ng);
+
+                if (i == 0) {
+                    encodings.add("gs#" + gram);
+                }
+
+                encodings.add("g#" + gram);
+                end = gram;
+            }
+            if (end != null) { // may not be present if len==ng1
+                encodings.add("ge#" + end);
+            }
+        }
+
+        if (wordLength == 2) {
             return encodings;
         }
 
@@ -59,6 +87,26 @@ public class PhoneticEncodingUtils {
 
     public Set<String> buildEncodings(String word, boolean stopWord) {
         return this.buildEncodings(word, new HashSet<>(), stopWord);
+    }
+
+    private int getMin(int l) {
+//        if (l > 5) {
+//            return 3;
+//        }
+        if (l >= 5) {
+            return 2;
+        }
+        return 1;
+    }
+
+    private int getMax(int l) {
+        if (l > 5) {
+            return 4;
+        }
+        if (l == 5) {
+            return 3;
+        }
+        return 2;
     }
 }
 

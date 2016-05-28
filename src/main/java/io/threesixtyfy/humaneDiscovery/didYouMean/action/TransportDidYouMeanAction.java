@@ -6,7 +6,9 @@ import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionSet;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionUtils;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.ActionFilters;
@@ -23,11 +25,14 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMeanRequest, DidYouMeanResponse> {
 
@@ -58,234 +63,199 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
         this.indicesService = indicesService;
     }
 
-//    @SuppressWarnings("unchecked")
-//    private MatchLevel matchLevel(Map<String, Object> source, String encodingField, String inputWord) {
-//        boolean foundEdgeGramMatch = false;
-//        List<Object> encodings = (List<Object>) source.get(encodingField);
-//        for (Object encoding : encodings) {
-//            if (inputWord.equals(encoding)) {
-//                // we have edgeGram match
-//                // we suggest this word
-//                foundEdgeGramMatch = true;
-//                break;
-//            }
-//        }
-//
-//        if (foundEdgeGramMatch) {
-//            return MatchLevel.EdgeGram;
-//        }
-//
-//        return null;
-//    }
-//
-//    // TODO: fix this by taking in calculation from suggestions
-//    @SuppressWarnings("unchecked")
-//    private String[] bestDoublet(List<String> inputWords, MultiSearchResponse.Item[] responses, int wordPosition) {
-//        // doublet would be position = inputWords.size() + wordPosition
-//        int doubletPosition = inputWords.size() + wordPosition;
-//        if (doubletPosition >= responses.length || responses[doubletPosition].isFailure()) {
-//            return null;
-//        }
-//
-//        String word1 = inputWords.get(wordPosition);
-//        String word2 = inputWords.get(wordPosition + 1);
-//
-//        String word1WithEdgeGramPrefix = Constants.EdgeGramPrefix + word1;
-//        String word2WithEdgeGramPrefix = Constants.EdgeGramPrefix + word2;
-//
-//        SearchResponse searchResponse = responses[doubletPosition].getResponse();
-//
-//        String edgeGramSuggestion = null;
-//        long edgeGramSuggestionCount = 0;
-//        MatchLevel edgeGramSuggestionWord1MatchLevel = MatchLevel.EdgeGram;
-//        MatchLevel edgeGramSuggestionWord2MatchLevel = MatchLevel.EdgeGram;
-//
-//        String phoneticSuggestion = null;
-//        int phoneticSuggestionEditDistance = Integer.MAX_VALUE;
-//        int phoneticSuggestionFuzzySimilarity = Integer.MIN_VALUE;
-//        long phoneticSuggestionCount = 0;
-//
-//        // if exact match, we are good here
-//        // if edgeGram match, we prefer edgeGram for word2
-//        // if phonetic match, we prefer one with at least 50% of count as minimum of word1 and word2
-//        for (SearchHit searchHit : searchResponse.getHits().getHits()) {
-//            // check for exact suggestion
-//            Map<String, Object> source = searchHit.getSource();
-//
-//            String suggestedWord1 = (String) source.get("word1");
-//            String suggestedWord2 = (String) source.get("word2");
-//
-//            MatchLevel word1MatchLevel = null;
-//            MatchLevel word2MatchLevel = null;
-//
-//            if (word1.equals(suggestedWord1) && word2.equals(suggestedWord2)) {
-//                // we have exact match here
-//                return null;
-//            } else if (word1.equals(suggestedWord1)) {
-//                word1MatchLevel = MatchLevel.Exact;
-//            } else if (word2.equals(suggestedWord2)) {
-//                word2MatchLevel = MatchLevel.Exact;
-//            }
-//
-//            int totalCount = (int) source.get("totalCount");
-//
-//            if (word1MatchLevel == null) {
-//                word1MatchLevel = matchLevel(source, "word1Encodings", word1WithEdgeGramPrefix);
-//            }
-//
-//            if (word2MatchLevel == null) {
-//                word2MatchLevel = matchLevel(source, "word2Encodings", word2WithEdgeGramPrefix);
-//            }
-//
-//            if (word1MatchLevel != null && word2MatchLevel != null) {
-//                // prefer
-//                // (1) the one with word1 exact and word2 edgeGram
-//                // (2) one of the exact and another edgeGram
-//                // (3) both edgeGram
-//                if (word1MatchLevel == MatchLevel.Exact && (edgeGramSuggestionWord1MatchLevel != MatchLevel.Exact || totalCount > edgeGramSuggestionCount)
-//                        || word2MatchLevel.getLevel() < edgeGramSuggestionWord2MatchLevel.getLevel()
-//                        || word2MatchLevel.getLevel() == edgeGramSuggestionWord2MatchLevel.getLevel() && totalCount > edgeGramSuggestionCount) {
-//                    edgeGramSuggestion = suggestedWord1 + " " + suggestedWord2;
-//                    edgeGramSuggestionCount = totalCount;
-//                    edgeGramSuggestionWord1MatchLevel = word1MatchLevel;
-//                    edgeGramSuggestionWord2MatchLevel = word2MatchLevel;
-//                }
-//            }
-//
-//            // we select the word with proper edit distance
-//            int distance = StringUtils.getLevenshteinDistance(suggestedWord1, word1) + StringUtils.getLevenshteinDistance(suggestedWord2, word2);
-//            int similarity = StringUtils.getFuzzyDistance(suggestedWord1, word1, Locale.ENGLISH) + StringUtils.getFuzzyDistance(suggestedWord2, word2, Locale.ENGLISH);
-//            if (distance == phoneticSuggestionEditDistance && phoneticSuggestionCount < totalCount && phoneticSuggestionFuzzySimilarity < similarity || distance < phoneticSuggestionEditDistance) {
-//                phoneticSuggestion = suggestedWord1 + " " + suggestedWord2;
-//                phoneticSuggestionCount = totalCount;
-//                phoneticSuggestionEditDistance = distance;
-//                phoneticSuggestionFuzzySimilarity = similarity;
-//            }
-//        }
-//
-//        // return suggestions here
-//        if (edgeGramSuggestion != null || phoneticSuggestion != null) {
-//            if (StringUtils.equals(edgeGramSuggestion, phoneticSuggestion)) {
-//                return new String[]{edgeGramSuggestion};
-//            } else {
-//                if (edgeGramSuggestion != null && phoneticSuggestion != null) {
-//                    return new String[]{edgeGramSuggestion, phoneticSuggestion};
-//                }
-//                if (edgeGramSuggestion != null) {
-//                    return new String[]{edgeGramSuggestion};
-//                }
-//
-//                if (phoneticSuggestion != null) {
-//                    return new String[]{phoneticSuggestion};
-//                }
-//            }
-//        }
-//
-//        return null;
-//    }
-
     @SuppressWarnings("unchecked")
     private DidYouMeanResponse buildResponse(List<String> tokens, long startTime, String... didYouMeanIndex) {
-        int wordCount = tokens.size();
-
         Map<String, Conjunct> conjunctMap = new HashMap<>();
-        Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
+        Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
+
+        if (disjuncts == null) {
+            return emptyResponse(startTime);
+        }
 
         Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
         if (suggestionsMap == null) {
-            return new DidYouMeanResponse(Math.max(1, System.currentTimeMillis() - startTime));
+            return emptyResponse(startTime);
         }
 
-        if (wordCount > 1) {
-//            MultiSearchResponse multiSearchResponse = (MultiSearchResponse) actionResponse;
-//            // logger.info("MultiSearchResponse: {}", multiSearchResponse);
-//
-//            // TODO: from each response build Suggestions and collate them to build multi word suggestions
-//
-//            if (wordCount == 2) {
-//                // get word1 + word2
-//                // if exact match, we are good here
-//                // if edgeGram match, we prefer edgeGram for word2
-//                // if phonetic match, we prefer one with at least 50% of count as minimum of word1 and word2
-////                String[] suggestions = bestDoublet(words, multiSearchResponse.getResponses(), 0);
-////                if (suggestions != null) {
-////                    int totalResults = suggestions.length;
-////                    DidYouMeanResult[] didYouMeanResults = new DidYouMeanResult[totalResults];
-////                    for (int i = 0; i < suggestions.length; i++) {
-////                        didYouMeanResults[i] = new DidYouMeanResult(suggestions[i]);
-////                    }
-////
-////                    SearchResponse searchResponse = multiSearchResponse.getResponses()[0].getResponse();
-////
-////                    return new DidYouMeanResponse(
-////                            didYouMeanResults,
-////                            searchResponse.getTotalShards(),
-////                            searchResponse.getSuccessfulShards(),
-////                            Math.max(1, System.currentTimeMillis() - startTime),
-////                            searchResponse.getShardFailures());
-////                }
-//            } else if (wordCount == 3) {
-//                // get word1 + word2, word2 + word3
-//                // for us to suggest we require word1 + word2 + word3 occur
-//                // if exact match of word1 + word2 and word2 + word3, we are good here
-//                // if edgeGram match, we are still better => better is edgeGram match in only one
-//                // if phonetic match, we prefer one with both of doublets having at least 50% of count as minimum of word1 and word2
-//            } else {
-//                // how to make algorithm recursive by using wordCount == 3 one
-//                // for now we may choose not to return any suggestion for this
-//                // we suggest only in one triplet, if at all
-//            }
+        // order disjunct by their weights based on suggestion
+        // if there is only one disjunct... we can simply pick the best suggestion and be happy
+        if (disjuncts.length == 1) {
+            // this would be when there is single token... and single conjunct
+            Disjunct disjunct = disjuncts[0];
+            Conjunct conjunct = disjunct.getConjuncts()[0];
 
-        } else {
-//            SearchResponse searchResponse = (SearchResponse) actionResponse;
-//
-//            String inputWord = tokens.get(0);
-//            Set<Suggestion> suggestions = suggestionsBuilder.unigramSuggestions(inputWord, searchResponse);
-//
-//            logger.info("======> Input Word: {}, Suggestions: {}", inputWord, suggestions);
-//            DidYouMeanResult[] results = suggestions.stream()
-//                    .map(Suggestion::getSuggestion)
-//                    .filter(suggestion -> !suggestion.equals(inputWord))
-//                    .map(DidYouMeanResult::new)
-//                    .toArray(DidYouMeanResult[]::new);
-//
-//            return new DidYouMeanResponse(
-//                    results,
-////                    searchResponse.getTotalShards(),
-////                    searchResponse.getSuccessfulShards(),
-//                    Math.max(1, System.currentTimeMillis() - startTime)
-////                    searchResponse.getShardFailures()
-//            );
+            SuggestionSet suggestionSet = suggestionsMap.get(conjunct.getKey());
 
-            String inputWord = tokens.get(0);
-            SuggestionSet suggestionSet = suggestionsMap.get(inputWord);
+            // TODO: support flag whether edge matches should be returned as suggestions
+            // get suggestion as normal word and suggestion as joined
+            if (!SuggestionUtils.noSuggestions(suggestionSet)) {
+                Suggestion[] suggestions = suggestionSet.getSuggestions();
 
-//            logger.info("======> Input Word: {}, Suggestions: {}", inputWord, suggestionSet);
-
-            if (suggestionSet != null && suggestionSet.getSuggestions() != null) {
                 boolean hasExactMatch = false;
-                boolean hasEdgeGramMatch = false;
-                for (Suggestion suggestion : suggestionSet.getSuggestions()) {
-                    if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
-                        hasEdgeGramMatch = true;
-                    } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+                boolean unigram = true;
+                for (Suggestion suggestion : suggestions) {
+                    if (suggestion.getMatchLevel() == MatchLevel.Exact) {
                         hasExactMatch = true;
+                        if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+                            unigram = false;
+                        } else if (!unigram && suggestion.getTokenType() == Suggestion.TokenType.Uni) {
+                            unigram = true;
+                        }
                     }
                 }
 
-                if (!hasExactMatch || hasEdgeGramMatch) {
-//                    boolean finalHasEdgeGramMatch = hasEdgeGramMatch;
-                    DidYouMeanResult[] results = suggestionSet.getSuggestions().stream()
-//                            .filter(suggestion -> !finalHasEdgeGramMatch || (suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact))
-                            .map(Suggestion::getSuggestion)
-                            .map(DidYouMeanResult::new)
-                            .toArray(DidYouMeanResult[]::new);
+                if (hasExactMatch && !unigram) {
+                    int size = 1;
+                    DidYouMeanResult[] results = new DidYouMeanResult[size];
+
+                    for (Suggestion suggestion : suggestions) {
+                        if (suggestion.getMatchLevel() == MatchLevel.Exact && suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+                            results[0] = new DidYouMeanResult(suggestion.getDisplay());
+                        }
+                    }
+
+                    return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
+                }
+
+                // but add bigram, even if exact
+                if (!hasExactMatch) {
+                    int size = Math.min(suggestions.length, 5);
+                    DidYouMeanResult[] results = new DidYouMeanResult[size];
+
+                    for (int i = 0; i < size; i++) {
+                        results[i] = new DidYouMeanResult(suggestions[i].getDisplay());
+                    }
 
                     return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
                 }
             }
+        } else {
+            SortedSet<DidYouMeanSuggestion> allSuggestions = new TreeSet<>();
+
+            for (Disjunct disjunct : disjuncts) {
+                // check if we can create a suggestion out of the disjunct
+                // premise one and only one conjunct shall have non exact suggestion
+                Conjunct[] conjuncts = disjunct.getConjuncts();
+                int conjunctCount = conjuncts.length;
+
+                int nonExactSuggestion = 0;
+                int nonExactConjunctIndex = 0;
+                SuggestionSet nonExactSuggestionSet = null;
+                for (int i = 0; i < conjunctCount; i++) {
+                    Conjunct conjunct = conjuncts[i];
+                    SuggestionSet suggestionSet = suggestionsMap.get(conjunct.getKey());
+                    if (SuggestionUtils.noSuggestions(suggestionSet)) {
+                        if (suggestionSet != null && !suggestionSet.isNumber()) {
+                            nonExactSuggestion++;
+                        }
+
+                        continue;
+                    }
+
+                    Suggestion firstSuggestion = suggestionSet.getSuggestions()[0];
+                    if (firstSuggestion.getMatchLevel() != MatchLevel.Exact) {
+                        nonExactSuggestionSet = suggestionSet;
+                        nonExactConjunctIndex = i;
+                        nonExactSuggestion++;
+                    } else if (conjunct.getLength() == 1) {
+                        // find out another conjunct of size 2 where it is one of the token and does not have exact match
+                        for (Conjunct c : conjunctMap.values()) {
+                            if (c.getLength() > 1 && c.getTokens().contains(conjunct.getKey())) {
+                                SuggestionSet ss = suggestionsMap.get(c.getKey());
+                                if (!SuggestionUtils.noSuggestions(ss) && ss.getSuggestions()[0].getMatchLevel() != MatchLevel.Exact) {
+                                    nonExactSuggestion++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (nonExactSuggestion > 1 || nonExactSuggestionSet == null) {
+                    continue;
+                }
+
+                StringBuilder prefix = new StringBuilder();
+                for (int i = 0; i < nonExactConjunctIndex; i++) {
+                    if (i > 0) {
+                        prefix.append(" ");
+                    }
+
+                    prefix.append(StringUtils.join(conjuncts[i].getTokens(), " "));
+                }
+
+                // build suffix string
+                StringBuilder suffix = new StringBuilder();
+                for (int i = nonExactConjunctIndex + 1; i < conjunctCount; i++) {
+                    if (i > nonExactConjunctIndex + 1) {
+                        suffix.append(" ");
+                    }
+
+                    suffix.append(StringUtils.join(conjuncts[i].getTokens(), " "));
+                }
+
+                for (Suggestion suggestion : nonExactSuggestionSet.getSuggestions()) {
+                    String suggestText = Arrays.asList(prefix.toString(), suggestion.getDisplay(), suffix.toString()).stream()
+                            .filter(val -> val != null && !StringUtils.isEmpty(val))
+                            .collect(Collectors.joining(" "));
+
+                    // score as per the picked suggestion
+                    float suggestionScore = getSuggestionScore(conjuncts[nonExactConjunctIndex].getLength(), suggestion);
+
+                    allSuggestions.add(new DidYouMeanSuggestion(suggestText, suggestionScore));
+                }
+            }
+
+            if (allSuggestions.size() > 0) {
+                List<String> suggestions = new ArrayList<>();
+                for (DidYouMeanSuggestion didYouMeanSuggestion : allSuggestions) {
+                    if (StringUtils.equalsIgnoreCase(didYouMeanSuggestion.suggestion, StringUtils.join(tokens, " "))) {
+                        break;
+                    }
+
+                    suggestions.add(didYouMeanSuggestion.suggestion);
+                }
+
+                if (suggestions.size() > 0) {
+                    int size = Math.min(suggestions.size(), 5);
+                    DidYouMeanResult[] results = new DidYouMeanResult[size];
+
+                    for (int i = 0; i < size; i++) {
+                        results[i] = new DidYouMeanResult(suggestions.get(i));
+                    }
+
+                    return new DidYouMeanResponse(results, Math.max(1, System.currentTimeMillis() - startTime));
+                }
+            }
+
         }
 
+        return emptyResponse(startTime);
+    }
+
+    private float getSuggestionScore(int conjunctTokens, Suggestion suggestion) {
+        float suggestionScore = 1.0f;
+
+        if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+            suggestionScore = 1.0f;
+        } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+            suggestionScore = 0.5f;
+        } else if (suggestion.getMatchLevel() == MatchLevel.Phonetic) {
+            suggestionScore = 0.1f;
+        } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
+            suggestionScore = 0.05f;
+        }
+
+        suggestionScore = (1 - suggestion.getEditDistance() / 10.0f) * suggestionScore;
+
+        if (suggestion.getTokenType() == Suggestion.TokenType.Bi || conjunctTokens > 1) {
+            suggestionScore = suggestionScore * 2.0f;
+        }
+
+        return suggestionScore;
+    }
+
+    private DidYouMeanResponse emptyResponse(long startTime) {
         return new DidYouMeanResponse(Math.max(1, System.currentTimeMillis() - startTime));
     }
 
@@ -329,5 +299,60 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                 super.onFailure(t);
             }
         });
+    }
+
+    static class DidYouMeanSuggestion implements Comparable<DidYouMeanSuggestion> {
+        String suggestion;
+        float score;
+
+        public DidYouMeanSuggestion(String suggestion, float score) {
+            this.suggestion = suggestion;
+            this.score = score;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            DidYouMeanSuggestion that = (DidYouMeanSuggestion) o;
+
+            return suggestion.equals(that.suggestion);
+
+        }
+
+        @Override
+        public int hashCode() {
+            return suggestion.hashCode();
+        }
+
+        @Override
+        public int compareTo(DidYouMeanSuggestion o) {
+            int ret = suggestion.compareTo(o.suggestion);
+
+            if (ret == 0) {
+                return 0;
+            }
+
+            ret = (int) ((o.score - score) * 1000);
+
+            if (ret == 0) {
+                ret = suggestion.compareTo(o.suggestion);
+            }
+
+            return ret;
+        }
+
+        @Override
+        public String toString() {
+            return "{" +
+                    "suggestion='" + suggestion + '\'' +
+                    ", score=" + score +
+                    '}';
+        }
     }
 }

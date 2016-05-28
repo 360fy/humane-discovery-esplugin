@@ -14,7 +14,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lucene.version>5.5.0</lucene.version>
-        <elasticsearch.version>2.3.2</elasticsearch.version>
+        <elasticsearch.version>2.3.3</elasticsearch.version>
     </properties>
 
     <!--<licenses>-->
@@ -184,7 +184,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>17.0</version>
+            <version>19.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

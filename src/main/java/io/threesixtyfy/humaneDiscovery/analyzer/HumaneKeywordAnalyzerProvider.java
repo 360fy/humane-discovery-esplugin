@@ -1,6 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.analyzer;
 
-import io.threesixtyfy.humaneDiscovery.tokenFilter.EdgeGramTokenFilterFactory;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.assistedinject.Assisted;
 import org.elasticsearch.common.settings.Settings;
@@ -9,7 +8,6 @@ import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
 import org.elasticsearch.index.analysis.CustomAnalyzer;
 import org.elasticsearch.index.analysis.KeywordTokenizerFactory;
 import org.elasticsearch.index.analysis.LowerCaseTokenFilterFactory;
-import org.elasticsearch.index.analysis.StandardTokenizerFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 import org.elasticsearch.index.settings.IndexSettingsService;
 

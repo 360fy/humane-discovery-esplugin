@@ -4,26 +4,44 @@ import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
 public class Suggestion implements Comparable<Suggestion> {
-    private final ESLogger logger = Loggers.getLogger(Suggestion.class);
+    private static final ESLogger logger = Loggers.getLogger(Suggestion.class);
 
+    private final TokenType tokenType;
     private final String suggestion;
     private final String match;
+    private final String display;
     private final MatchLevel matchLevel;
     private final int editDistance;
-    private final float editDistancePercentage;
     private final int similarity;
-    private final float similarityPercentage;
+    private final double weight;
     private final int count;
 
-    public Suggestion(String suggestion, String match, MatchLevel matchLevel, int editDistance, float editDistancePercentage, int similarity, float similarityPercentage, int count) {
+    private final double jwDistance;
+    private final double lDistance;
+
+    private final float score;
+
+    private boolean ignore = false;
+
+    public Suggestion(TokenType tokenType, String suggestion, String match, String display, MatchLevel matchLevel, int editDistance, int similarity, double jwDistance, double lDistance, float score, double weight, int count) {
+        this.tokenType = tokenType;
         this.suggestion = suggestion;
         this.match = match;
+        this.display = display;
         this.matchLevel = matchLevel;
         this.editDistance = editDistance;
-        this.editDistancePercentage = editDistancePercentage;
         this.similarity = similarity;
-        this.similarityPercentage = similarityPercentage;
+
+        this.jwDistance = jwDistance;
+        this.lDistance = lDistance;
+
+        this.score = score;
+        this.weight = weight;
         this.count = count;
+    }
+
+    public TokenType getTokenType() {
+        return tokenType;
     }
 
     public String getSuggestion() {
@@ -34,6 +52,10 @@ public class Suggestion implements Comparable<Suggestion> {
         return match;
     }
 
+    public String getDisplay() {
+        return display;
+    }
+
     public MatchLevel getMatchLevel() {
         return matchLevel;
     }
@@ -42,20 +64,36 @@ public class Suggestion implements Comparable<Suggestion> {
         return editDistance;
     }
 
-    public float getEditDistancePercentage() {
-        return editDistancePercentage;
-    }
-
     public int getSimilarity() {
         return similarity;
     }
 
-    public float getSimilarityPercentage() {
-        return similarityPercentage;
+    public double getJwDistance() {
+        return jwDistance;
+    }
+
+    public double getlDistance() {
+        return lDistance;
+    }
+
+    public float getScore() {
+        return score;
+    }
+
+    public double getWeight() {
+        return weight;
     }
 
     public int getCount() {
         return count;
+    }
+
+    public boolean isIgnore() {
+        return ignore;
+    }
+
+    public void setIgnore(boolean ignore) {
+        this.ignore = ignore;
     }
 
     @Override
@@ -80,19 +118,39 @@ public class Suggestion implements Comparable<Suggestion> {
 
     @Override
     public int compareTo(Suggestion o) {
+        int ret = this.matchLevel.level - o.matchLevel.level;
+
         // lower edit distance comes first
-        int ret = this.editDistance - o.editDistance;
-
         if (ret == 0) {
-            ret = this.matchLevel.level - o.matchLevel.level;
+            ret = Integer.compare(editDistance, o.editDistance);
         }
 
         if (ret == 0) {
-            ret = o.similarity - this.similarity;
+            ret = Double.compare(o.lDistance, lDistance);
         }
 
         if (ret == 0) {
-            ret = o.count - this.count;
+            ret = Double.compare(o.jwDistance, jwDistance);
+        }
+
+        if (ret == 0) {
+            ret = Integer.compare(o.similarity, this.similarity);
+        }
+
+        if (ret == 0) {
+            ret = Double.compare(o.weight / Math.max(1, o.count), weight / Math.max(1, count));
+        }
+
+        if (ret == 0) {
+            ret = Integer.compare(tokenType.getLevel(), o.tokenType.getLevel());
+        }
+
+        if (ret == 0) {
+            ret = Double.compare(o.weight, weight);
+        }
+
+        if (ret == 0) {
+            ret = Integer.compare(o.count, count);
         }
 
         if (ret == 0) {
@@ -104,15 +162,35 @@ public class Suggestion implements Comparable<Suggestion> {
 
     @Override
     public String toString() {
-        return "Suggestion{" +
-                "suggestion='" + suggestion + '\'' +
+        return "{" +
+                "tokenType=" + tokenType +
+                ", suggestion='" + suggestion + '\'' +
                 ", match='" + match + '\'' +
+                ", display='" + display + '\'' +
                 ", matchLevel=" + matchLevel +
                 ", editDistance=" + editDistance +
-                ", editDistancePercentage=" + editDistancePercentage +
                 ", similarity=" + similarity +
-                ", similarityPercentage=" + similarityPercentage +
+                ", weight=" + weight +
                 ", count=" + count +
+                ", jwDistance=" + jwDistance +
+                ", lDistance=" + lDistance +
+                ", score=" + score +
+                ", ignore=" + ignore +
                 '}';
+    }
+
+    public enum TokenType {
+        Uni(0),
+        Bi(1);
+
+        final int level;
+
+        TokenType(int level) {
+            this.level = level;
+        }
+
+        public int getLevel() {
+            return level;
+        }
     }
 }

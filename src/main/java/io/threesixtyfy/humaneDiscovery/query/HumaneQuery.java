@@ -3,6 +3,7 @@ package io.threesixtyfy.humaneDiscovery.query;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionSet;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
@@ -35,32 +36,18 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class HumaneQuery extends Query {
     private final ESLogger logger = Loggers.getLogger(HumaneQuery.class);
 
     private static final String StandardQueryAnalyzerName = "humane_query_analyzer";
     private static final String StandardEdgeGramQueryAnalyzerName = "humane_edgeGram_query_analyzer";
-
-//
-//    private static final String[] PhoneticAnalyzerNames = {
-//            "phonetic_refined_soundex_search_analyzer",
-//            "phonetic_dm_soundex_search_analyzer",
-//            "phonetic_bm_search_analyzer",
-//            "phonetic_dm_search_analyzer"
-//    };
-//    private static final String[] PhoneticEdgeGramAnalyzerNames = {
-//            "phonetic_refined_soundex_edgeGram_search_analyzer",
-//            "phonetic_dm_soundex_edgeGram_search_analyzer",
-//            "phonetic_bm_edgeGram_search_analyzer",
-//            "phonetic_dm_edgeGram_search_analyzer"
-//    };
 
     private static final Map<String, QueryBuilder> QueryBuilderCache = new HashMap<>();
 
@@ -70,131 +57,9 @@ public class HumaneQuery extends Query {
 
     private final DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
 
-//    private static final HashMap<String, String> Synonyms = new HashMap<>();
-//
-//    static {
-//        Synonyms.put("ibps", "institute of banking personnel selection");
-//        Synonyms.put("sbi", "state bank of india");
-//        Synonyms.put("rrb", "regional rural bank");
-//        Synonyms.put("rrb", "railway recruitment board");
-//        Synonyms.put("upsc", "union public service commission");
-//        Synonyms.put("ssc", "staff service commission");
-//        Synonyms.put("cgl", "combined graduate level examination");
-//        Synonyms.put("rbi", "reserve bank of india");
-//        Synonyms.put("sebi", "securities and exchange board of india");
-//        Synonyms.put("nabard", "national bank for agriculture and rural development");
-//        Synonyms.put("sidbi", "small industries development bank of india");
-//        Synonyms.put("sbh", "state bank of hyderabad");
-//        Synonyms.put("idbi", "industrial development bank of india");
-//        Synonyms.put("bob", "bank of baroda");
-//        Synonyms.put("ricem", "rajasthan institute of cooperative education and management");
-//        Synonyms.put("lvb", "laxmi vilas bank");
-//        Synonyms.put("apcob", "andhra pradesh state cooperative bank");
-//        Synonyms.put("dccb", "district central cooperative bank");
-//        Synonyms.put("hpscb", "hp state cooperative bank assistant manager");
-//        Synonyms.put("oscb", "odisha state cooperative bank");
-//        Synonyms.put("iob", "indian overseas bank");
-//        Synonyms.put("kvb", "karur vysya bank");
-//        Synonyms.put("svc", "shamrao vithal cooperative bank");
-//        Synonyms.put("cso", "customer service officer");
-//        Synonyms.put("csr", "customer service representative");
-//        Synonyms.put("oicl", "oriental insurance company limited");
-//        Synonyms.put("aic", "agriculture insurance company of india limited");
-//        Synonyms.put("lic", "life insurance corporation of india");
-//        Synonyms.put("aao", "assistant administrative officer");
-//        Synonyms.put("nia", "new india assurance");
-//        Synonyms.put("uii", "united india insurance");
-//        Synonyms.put("nicl", "national insurance company ltd");
-//        Synonyms.put("ado", "apprentice development officer");
-//        Synonyms.put("gic", "general insurance corporation");
-//        Synonyms.put("cmpfo", "coal mines provident fund organisation");
-//        Synonyms.put("ib", "intelligence bureau");
-//        Synonyms.put("acio", "assistant central intelligence officer");
-//        Synonyms.put("uii", "united india insurance");
-//        Synonyms.put("ubi", "union bank of india");
-//        Synonyms.put("fci", "food corporation of india");
-//        Synonyms.put("chsl", "combined higher secondary level");
-//        Synonyms.put("ldc", "lower division clerk");
-//        Synonyms.put("epfo", "the employees provident fund organisation");
-//        Synonyms.put("uptet", "uttar pradesh teachers eligibility test");
-//        Synonyms.put("si", "subinspector");
-//        Synonyms.put("rpsc", "rajasthan public service commission");
-//        Synonyms.put("ras", "rajasthan administrative service");
-//        Synonyms.put("ntpc", "non technical popular categories");
-//        Synonyms.put("ecrc", "enquiry cum reservation clerk");
-//        Synonyms.put("jaa", "junior accounts assistant cum typist");
-//        Synonyms.put("pgdbf", "post graduate diploma in banking and finance");
-//        Synonyms.put("ctet", "central teacher eligibility test");
-//        Synonyms.put("cds", "combined defence services");
-//        Synonyms.put("esic", "employees' state insurance corporation");
-//        Synonyms.put("udc", "upper division clerk");
-//        Synonyms.put("mts", "multi tasking staff");
-//        Synonyms.put("tspsc", "telangana state public service commission");
-//        Synonyms.put("irda", "insurance regulatory and development authority");
-//        Synonyms.put("ssc asi", "assistant subinspector ");
-//        Synonyms.put("isro", "indian space research organisation");
-//        Synonyms.put("dmrc", "delhi metro rail corporation");
-//        Synonyms.put("institute of banking personnel selection", "ibps");
-//        Synonyms.put("state bank of india", "sbi");
-//        Synonyms.put("regional rural bank", "rrb");
-//        Synonyms.put("railway recruitment board", "rrb");
-//        Synonyms.put("union public service commission", "upsc");
-//        Synonyms.put("staff service commission", "ssc");
-//        Synonyms.put("combined graduate level examination", "cgl");
-//        Synonyms.put("reserve bank of india", "rbi");
-//        Synonyms.put("securities and exchange board of india", "sebi");
-//        Synonyms.put("national bank for agriculture and rural development", "nabard");
-//        Synonyms.put("small industries development bank of india", "sidbi");
-//        Synonyms.put("state bank of hyderabad", "sbh");
-//        Synonyms.put("industrial development bank of india", "idbi");
-//        Synonyms.put("bank of baroda", "bob");
-//        Synonyms.put("rajasthan institute of cooperative education and management", "ricem");
-//        Synonyms.put("laxmi vilas bank", "lvb");
-//        Synonyms.put("andhra pradesh state cooperative bank", "apcob");
-//        Synonyms.put("district central cooperative bank", "dccb");
-//        Synonyms.put("hp state cooperative bank assistant manager", "hpscb");
-//        Synonyms.put("odisha state cooperative bank", "oscb");
-//        Synonyms.put("indian overseas bank", "iob");
-//        Synonyms.put("karur vysya bank", "kvb");
-//        Synonyms.put("shamrao vithal cooperative bank", "svc");
-//        Synonyms.put("customer service officer", "cso");
-//        Synonyms.put("customer service representative", "csr");
-//        Synonyms.put("oriental insurance company limited", "oicl");
-//        Synonyms.put("agriculture insurance company of india limited", "aic");
-//        Synonyms.put("life insurance corporation of india", "lic");
-//        Synonyms.put("assistant administrative officer", "aao");
-//        Synonyms.put("new india assurance", "nia");
-//        Synonyms.put("united india insurance", "uii");
-//        Synonyms.put("national insurance company ltd ", "nicl");
-//        Synonyms.put("apprentice development officer ", "ado");
-//        Synonyms.put("general insurance corporation", "gic");
-//        Synonyms.put("coal mines provident fund organisation", "cmpfo");
-//        Synonyms.put("intelligence bureau", "ib");
-//        Synonyms.put("assistant central intelligence officer", "acio");
-//        Synonyms.put("united india insurance", "uii");
-//        Synonyms.put("union bank of india", "ubi");
-//        Synonyms.put("food corporation of india", "fci");
-//        Synonyms.put("combined higher secondary level", "chsl");
-//    }
-
     public HumaneQuery(QueryParseContext parseContext) {
         this.parseContext = parseContext;
     }
-
-//    public Query parse(String fieldName, Object value) throws IOException {
-//        try {
-//            QueryField queryField = new QueryField();
-//            queryField.name = fieldName;
-//            queryField.boost = 1.0f;
-//
-//            QueryField[] queryFields = {queryField};
-//
-//            return humaneQuery(queryFields, value.toString());
-//        } catch (Throwable t) {
-//            logger.error("Error in creating humane query", t);
-//            throw t;
-//        }
-//    }
 
     public Query parse(Client client, SuggestionsBuilder suggestionsBuilder, QueryField field, Object value) throws IOException {
         try {
@@ -215,25 +80,6 @@ public class HumaneQuery extends Query {
             throw t;
         }
     }
-
-//    protected MappedFieldType getFieldType(String fieldName) {
-//        return parseContext.fieldMapper(fieldName);
-//    }
-//
-//    protected String getFieldName(String fieldName) {
-//        MappedFieldType fieldType = getFieldType(fieldName);
-//
-//        final String field;
-//
-//        if (fieldType != null) {
-//            field = fieldType.names().indexName();
-//        } else {
-//            field = fieldName;
-//        }
-//
-//        return field;
-//    }
-
 
     protected NestedPathContext nestedPathContext(String path) {
         synchronized (NestedPathContextCache) {
@@ -295,15 +141,15 @@ public class HumaneQuery extends Query {
         }
     }
 
-    protected Query multiFieldQuery(QueryField[] queryFields, String text, boolean shingle, int numTokens, Set<Suggestion> suggestions) {
+    protected Query multiFieldQuery(QueryField[] queryFields, String text, /*boolean shingle, int numTokens,*/ Suggestion[] suggestions) {
         if (queryFields.length == 1) {
-            return this.fieldQuery(queryFields[0], text, shingle, numTokens, suggestions);
+            return this.fieldQuery(queryFields[0], text, /*shingle, numTokens,*/ suggestions);
         }
 
         List<Query> fieldDisjuncts = new LinkedList<>();
 
         for (QueryField queryField : queryFields) {
-            fieldDisjuncts.add(this.fieldQuery(queryField, text, shingle, numTokens, suggestions));
+            fieldDisjuncts.add(this.fieldQuery(queryField, text, /*shingle, numTokens,*/ suggestions));
         }
 
         return new DisjunctionMaxQuery(fieldDisjuncts, 1.0f);
@@ -313,31 +159,58 @@ public class HumaneQuery extends Query {
     // edgeGram = 30 % field weight
     // phonetic = 15 % field weight
     // edgeGramPhonetic = 5 % field weight
-    protected Query fieldQuery(QueryField field, String text, boolean shingle, int numTokens, Set<Suggestion> suggestions) {
+    protected Query fieldQuery(QueryField field, String text, /*boolean shingle, int numTokens,*/ Suggestion[] suggestions) {
         BooleanQuery.Builder fieldQueryBuilder = new BooleanQuery.Builder();
 
-        boolean noFuzzy = field.noFuzzy || /*numTokens == 1 &&*/ text.length() <= 2 /*|| numTokens > 1 && text.length() <= 2*/;
+        boolean noFuzzy = field.noFuzzy || text.length() <= 2;
 
-//        if (!noFuzzy) {
-//            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticAnalyzerNames), 0.15f * field.boost), BooleanClause.Occur.SHOULD);
-//            fieldQueryBuilder.add(fieldFuzzyQuery(fieldFuzzyClauses(field, text, phrase, PhoneticEdgeGramAnalyzerNames), 0.05f * field.boost), BooleanClause.Occur.SHOULD);
-//            fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, phrase, 0.50f * field.boost), BooleanClause.Occur.SHOULD);
-//            fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, phrase, 0.30f * field.boost), BooleanClause.Occur.SHOULD);
-//        } else {
-//            fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, phrase, 0.75f * field.boost), BooleanClause.Occur.SHOULD);
-//            fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, phrase, 0.25f * field.boost), BooleanClause.Occur.SHOULD);
-//        }
+        fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, false, 100.0f * field.boost), BooleanClause.Occur.SHOULD);
+        fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, false, 20.0f * field.boost), BooleanClause.Occur.SHOULD);
 
-        fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, shingle, 100.0f * field.boost), BooleanClause.Occur.SHOULD);
-        fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, shingle, 10.0f * field.boost), BooleanClause.Occur.SHOULD);
+        boolean addedShingleQueries = false;
 
-        /*suggestion.getMatchLevel().getLevel() > MatchLevel.EdgeGram.getLevel()*/
         if (!noFuzzy && suggestions != null) {
-            suggestions
-                    .stream()
-                    .filter(suggestion -> !StringUtils.equals(suggestion.getSuggestion(), text))
-                    .forEach(suggestion ->
-                            fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, suggestion.getSuggestion(), shingle, (1 - suggestion.getEditDistance() / 10.0f) * field.boost), BooleanClause.Occur.SHOULD));
+            for (Suggestion suggestion : suggestions) {
+                if (suggestion.isIgnore()
+                        || suggestion.getTokenType() == Suggestion.TokenType.Uni && (suggestion.getMatchLevel() == MatchLevel.Exact || suggestion.getMatchLevel() == MatchLevel.EdgeGram)) {
+                    continue;
+                }
+
+                // only if there is at least one bi token type we add
+                if (!addedShingleQueries && suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+                    fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, true, 200.0f * field.boost), BooleanClause.Occur.SHOULD);
+                    // fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, true, 20.0f * field.boost), BooleanClause.Occur.SHOULD);
+
+                    addedShingleQueries = true;
+                }
+
+                float boostMultiplier = 1.0f;
+                if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+                    boostMultiplier = 200.0f;
+                } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+                    boostMultiplier = 40.0f;
+                } else if (suggestion.getMatchLevel() == MatchLevel.Phonetic) {
+                    if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+                        boostMultiplier = 10.0f;
+                    } else {
+                        boostMultiplier = 5.0f;
+                    }
+                } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
+                    if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+                        boostMultiplier = 2.0f;
+                    } else {
+                        boostMultiplier = 1.0f;
+                    }
+                }
+
+                fieldQueryBuilder.add(
+                        buildQuery(field,
+                                StandardQueryAnalyzerName,
+                                suggestion.getSuggestion(),
+                                suggestion.getTokenType() == Suggestion.TokenType.Bi,
+                                (1 - suggestion.getEditDistance() / 10.0f) * boostMultiplier * field.boost),
+                        BooleanClause.Occur.SHOULD);
+            }
         }
 
         Query query = fieldQueryBuilder.build();
@@ -350,37 +223,6 @@ public class HumaneQuery extends Query {
 
         return query;
     }
-
-//    protected Query fieldFuzzyQuery(List<Query> phoneticClauses, float maxWeight) {
-//        BooleanQuery.Builder phoneticQueryBuilder = new BooleanQuery.Builder();
-//
-//        float phoneticClauseWeight = maxWeight / phoneticClauses.size();
-//
-//        for (Query clause : phoneticClauses) {
-//            phoneticQueryBuilder.add(constantScoreQuery(clause, phoneticClauseWeight), BooleanClause.Occur.SHOULD);
-//        }
-//
-//        phoneticQueryBuilder.setMinimumNumberShouldMatch(2);
-//
-//        return phoneticQueryBuilder.build();
-//    }
-//
-//    protected List<Query> fieldFuzzyClauses(QueryField field, String text, boolean phrase, String[] fuzzyAnalyzerNames) {
-//        List<Query> fuzzyClauses = new LinkedList<>();
-//        for (String analyzerName : fuzzyAnalyzerNames) { // noFuzzy ones
-//            Query fuzzyQuery = this.buildQuery(field, analyzerName, text, phrase, 1.0f);
-//            if (fuzzyQuery instanceof BooleanQuery) {
-//                BooleanQuery bq = (BooleanQuery) fuzzyQuery;
-//                for (BooleanClause clause : bq.clauses()) {
-//                    fuzzyClauses.add(clause.getQuery());
-//                }
-//            } else {
-//                fuzzyClauses.add(fuzzyQuery);
-//            }
-//        }
-//
-//        return fuzzyClauses;
-//    }
 
     protected Query buildQuery(QueryField field, String analyzer, String text, boolean shingle, float weight) {
         QueryBuilder queryBuilder = this.queryBuilder(analyzer);
@@ -416,10 +258,6 @@ public class HumaneQuery extends Query {
         }
     }
 
-//    private Collection<Query> fieldQuery(List<QueryField> queryFields, String text, boolean phrase) {
-//        return this.fieldQuery(new LinkedList<Query>(), queryFields, text, phrase);
-//    }
-
     public static String toString(BytesRef termText) {
         // the term might not be text, but usually is. so we make a best effort
         CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
@@ -431,27 +269,6 @@ public class HumaneQuery extends Query {
             return termText.toString();
         }
     }
-
-//    protected String[] tokens(String text) {
-//        ArrayList<String> tokenList = new ArrayList<>();
-//
-//        Analyzer standardSearchAnalyzer = this.analyzer(StandardQueryAnalyzerName);
-//
-//        try (TokenStream source = standardSearchAnalyzer.tokenStream("DUMMY", text);
-//             CachingTokenFilter stream = new CachingTokenFilter(source)) {
-//            TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-//
-//            stream.reset();
-//            while (stream.incrementToken()) {
-//                String token = toString(termAtt.getBytesRef());
-//                tokenList.add(token);
-//            }
-//        } catch (IOException e) {
-//            throw new RuntimeException("Error analyzing query text", e);
-//        }
-//
-//        return tokenList.toArray(new String[tokenList.size()]);
-//    }
 
     private Query query(Query[] queryNodes, int numTokens) {
         int numQueryNodes = 0;
@@ -525,7 +342,7 @@ public class HumaneQuery extends Query {
 
             for (int i = 0; i < numTokens; i++) {
                 String token = tokens.get(i);
-                queryNodes[i] = this.multiFieldQuery(queryFields, token, false, numTokens, null);
+                queryNodes[i] = this.multiFieldQuery(queryFields, token, /*false, numTokens,*/ null);
             }
 
             return query(queryNodes, numTokens);
@@ -535,19 +352,19 @@ public class HumaneQuery extends Query {
             }
 
             Map<String, Conjunct> conjunctMap = new HashMap<>();
-            Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
+            Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("For Index/Type: {}/{} and tokens: {}, got disjuncts: {} in {}ms", indexName, queryTypes, tokens, disjuncts, (System.currentTimeMillis() - startTime));
+                logger.debug("For Index/Type: {}/{} and tokens: {}, got disjuncts: {} in {}ms", indexName, queryTypes, tokens, Arrays.toString(disjuncts), (System.currentTimeMillis() - startTime));
 
                 startTime = System.currentTimeMillis();
             }
 
             final Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(client, conjunctMap.values(), indexName + ":did_you_mean_store");
 
-//            if (logger.isDebugEnabled()) {
-            logger.info("For Index: {}/{}, query: {}, tokens: {}, disjuncts: {}, got suggestions: {} in {}ms", indexName, queryTypes, queryText, tokens, disjuncts, suggestionsMap, (System.currentTimeMillis() - startTime));
-//            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("For Index: {}/{}, query: {}, tokens: {}, disjuncts: {}, got suggestions: {} in {}ms", indexName, queryTypes, queryText, tokens, Arrays.toString(disjuncts), suggestionsMap, (System.currentTimeMillis() - startTime));
+            }
 
             if (suggestionsMap == null || suggestionsMap.size() == 0) {
                 return null;
@@ -556,7 +373,6 @@ public class HumaneQuery extends Query {
             List<Query> queries = new ArrayList<>();
 
             for (Disjunct disjunct : disjuncts) {
-                // check if all conjuncts have suggestions ?
                 if (logger.isDebugEnabled()) {
                     logger.debug("Building query for disjunct: {}", disjunct.getKey());
                 }
@@ -567,7 +383,6 @@ public class HumaneQuery extends Query {
                 boolean ignoreDisjunct = false;
                 BooleanQuery.Builder disjunctQueryBuilder = new BooleanQuery.Builder();
                 for (Conjunct conjunct : disjunct.getConjuncts()) {
-                    // depending on the conjunct length form a query
                     if (logger.isDebugEnabled()) {
                         logger.debug("Building query for conjunct: {}", conjunct.getKey());
                     }
@@ -575,134 +390,55 @@ public class HumaneQuery extends Query {
                     if (conjunct.getLength() == 1) {
                         // we form normal query
                         String token = conjunct.getTokens().get(0);
-                        String key = token;
+                        String key = conjunct.getKey();
                         SuggestionSet suggestionSet = suggestionsMap.get(key);
 
-                        boolean stopWord = false;
-
-                        Query termQuery = null;
-                        if (suggestionSet != null) {
-                            termQuery = this.multiFieldQuery(queryFields, token, false, numTokens, suggestionSet.getSuggestions());
+                        if (suggestionSet != null && (suggestionSet.getSuggestions() != null || suggestionSet.isNumber() || suggestionSet.isStopWord())) {
+                            Query termQuery = this.multiFieldQuery(queryFields, token, /*false, numTokens,*/ suggestionSet.getSuggestions());
 
                             if (logger.isDebugEnabled()) {
                                 logger.debug("Building term query for token: {}, conjunct: {}, key: {}, suggestions: {}, query: {}", token, conjunct.getKey(), key, suggestionSet, termQuery);
                             }
 
-                            stopWord = suggestionSet.isStopWord();
+//                            if (suggestionSet.isStopWord()) {
+//                                stopWordsCount++;
+//                            }
 
-                        } else if (queryTypes != null && queryTypes.length == 1 && (queryTypes[0].contains("new_car_model") || queryTypes[0].contains("new_car_brand"))) {
+                            disjunctQueryBuilder.add(termQuery, BooleanClause.Occur.SHOULD);
+
+                            clauseCount++;
+                            shouldClauseCount++;
+
+                        } /*else if (queryTypes != null && queryTypes.length == 1 && (queryTypes[0].contains("new_car_model") || queryTypes[0].contains("new_car_brand"))) {
                             // TODO: either support this basis some flag... or some other way...
                             ignoreDisjunct = true;
                             break;
-                        }
-
-                        key = key + "/joined";
-                        suggestionSet = suggestionsMap.get(key);
-                        Query joinedQuery = null;
-
-                        if (suggestionSet != null && suggestionSet.getSuggestions() != null) {
-                            // query in shingle field
-                            joinedQuery = this.multiFieldQuery(queryFields, token, true, numTokens, suggestionSet.getSuggestions());
-
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Building joined query for token: {}, conjunct: {}, key: {}, suggestions: {}, query: {}", token, conjunct.getKey(), key, suggestionSet, joinedQuery);
-                            }
-
-                            stopWord = stopWord || suggestionSet.isStopWord();
-                        }
-
-                        if (stopWord) {
-                            stopWordsCount++;
-                        }
-
-                        if (termQuery != null && joinedQuery != null) {
-                            BooleanQuery.Builder builder = new BooleanQuery.Builder();
-                            builder.add(termQuery, BooleanClause.Occur.SHOULD);
-                            builder.add(joinedQuery, BooleanClause.Occur.SHOULD);
-                            disjunctQueryBuilder.add(builder.build(), BooleanClause.Occur.SHOULD);
-                            shouldClauseCount++;
-                            clauseCount++;
-                        } else if (termQuery != null) {
-                            disjunctQueryBuilder.add(termQuery, BooleanClause.Occur.SHOULD);
-                            shouldClauseCount++;
-                            clauseCount++;
-                        } else if (joinedQuery != null) {
-                            disjunctQueryBuilder.add(joinedQuery, BooleanClause.Occur.SHOULD);
-                            shouldClauseCount++;
-                            clauseCount++;
-                        }
+                        }*/
                     } else {
-                        Query shingleQuery = null;
-
                         // we form a shingle query
-                        String shingleToken = StringUtils.join(conjunct.getTokens(), "");
-                        String key = conjunct.getKey() + "/shingle";
-                        SuggestionSet suggestionSet = suggestionsMap.get(key);
-
-                        if (suggestionSet != null && suggestionSet.getSuggestions() != null) {
-                            shingleQuery = this.multiFieldQuery(queryFields, shingleToken, true, numTokens, suggestionSet.getSuggestions());
-
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Building shingle query for token: {}, conjunct: {}, key: {}, suggestions: {}, query: {}", shingleToken, conjunct.getKey(), key, suggestionSet, shingleQuery);
-                            }
-                        }
-
-                        // if compound token exists we form a compound query
                         String compoundToken = StringUtils.join(conjunct.getTokens(), "");
-                        key = conjunct.getKey() + "/compoundUni";
-                        suggestionSet = suggestionsMap.get(key);
+                        String compoundKey = conjunct.getKey(); //+ "/shingle";
+                        SuggestionSet suggestionSet = suggestionsMap.get(compoundKey);
 
-                        Query compoundUniQuery = null;
                         if (suggestionSet != null && suggestionSet.getSuggestions() != null) {
-                            compoundUniQuery = this.multiFieldQuery(queryFields, compoundToken, false, numTokens, suggestionSet.getSuggestions());
+                            Query compoundQuery = this.multiFieldQuery(queryFields, compoundToken, /*true, numTokens,*/ suggestionSet.getSuggestions());
 
                             if (logger.isDebugEnabled()) {
-                                logger.debug("Building compound unigram query for token: {}, conjunct: {}, key: {}, suggestions: {}, query: {}", compoundToken, conjunct.getKey(), key, suggestionSet, compoundUniQuery);
+                                logger.debug("Building compound query for token: {}, conjunct: {}, key: {}, suggestions: {}, query: {}",
+                                        compoundToken,
+                                        conjunct.getKey(),
+                                        compoundKey,
+                                        suggestionSet,
+                                        compoundQuery);
                             }
-                        }
 
-                        key = conjunct.getKey() + "/compoundBi";
-                        suggestionSet = suggestionsMap.get(key);
+                            disjunctQueryBuilder.add(compoundQuery, BooleanClause.Occur.SHOULD);
 
-                        Query compoundBiQuery = null;
-                        if (suggestionSet != null && suggestionSet.getSuggestions() != null) {
-                            compoundBiQuery = this.multiFieldQuery(queryFields, compoundToken, true, numTokens, suggestionSet.getSuggestions());
-
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Building compound bigram query for token: {}, conjunct: {}, key: {}, suggestions: {}, query: {}", compoundToken, conjunct.getKey(), key, suggestionSet, compoundBiQuery);
-                            }
-                        }
-
-                        if (shingleQuery == null && compoundUniQuery == null && compoundBiQuery == null) {
-                            ignoreDisjunct = true;
-                            break;
-                        }
-
-                        List<Query> compoundQueries = new ArrayList<>();
-                        if (shingleQuery != null) {
-                            compoundQueries.add(shingleQuery);
-                        }
-
-                        if (compoundUniQuery != null) {
-                            compoundQueries.add(compoundUniQuery);
-                        }
-
-                        if (compoundBiQuery != null) {
-                            compoundQueries.add(compoundBiQuery);
-                        }
-
-                        if (compoundQueries.size() == 1) {
-                            disjunctQueryBuilder.add(compoundQueries.get(0), BooleanClause.Occur.SHOULD);
+                            clauseCount++;
+                            shouldClauseCount++;
                         } else {
-                            BooleanQuery.Builder builder = new BooleanQuery.Builder();
-                            for (Query query : compoundQueries) {
-                                builder.add(query, BooleanClause.Occur.SHOULD);
-                            }
-                            disjunctQueryBuilder.add(builder.build(), BooleanClause.Occur.SHOULD);
+                            ignoreDisjunct = true;
                         }
-
-                        clauseCount++;
-                        shouldClauseCount++;
                     }
                 }
 

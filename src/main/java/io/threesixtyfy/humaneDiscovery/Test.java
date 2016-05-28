@@ -5,10 +5,10 @@ import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class Test {
 
@@ -23,11 +23,11 @@ public class Test {
         DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
 
         Map<String, Conjunct> uniqueConjuncts = new HashMap<>();
-        Set<Disjunct> disjuncts = disjunctsBuilder.build(tokens, uniqueConjuncts);
+        Disjunct[] disjuncts = disjunctsBuilder.build(tokens, uniqueConjuncts);
 
         System.out.println(uniqueConjuncts);
 
-        disjuncts.forEach(System.out::println);
+        Arrays.asList(disjuncts).forEach(System.out::println);
     }
 
 }

@@ -12,14 +12,14 @@ import org.elasticsearch.index.analysis.StandardTokenizerFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 import org.elasticsearch.index.settings.IndexSettingsService;
 
-public class HumaneTextAnalyzerProvider extends AbstractIndexAnalyzerProvider<CustomAnalyzer> {
+public class HumaneDescriptiveTextAnalyzerProvider extends AbstractIndexAnalyzerProvider<CustomAnalyzer> {
 
-    public static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 1;
+    public static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 2;
 
     private final CustomAnalyzer customAnalyzer;
 
     @Inject
-    public HumaneTextAnalyzerProvider(Index index, IndexSettingsService indexSettingsService, @Assisted String name, @Assisted Settings settings) {
+    public HumaneDescriptiveTextAnalyzerProvider(Index index, IndexSettingsService indexSettingsService, @Assisted String name, @Assisted Settings settings) {
         super(index, indexSettingsService.indexSettings(), name, settings);
 
         int minGram = settings.getAsInt("min_gram", DEFAULT_MIN_EDGE_GRAM_SIZE);

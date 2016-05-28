@@ -1,13 +1,13 @@
 package io.threesixtyfy.humaneDiscovery.didYouMean.commons;
 
-import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
 
 public class SuggestionSet {
     private final boolean number;
     private final boolean stopWord;
-    private final Set<Suggestion> suggestions;
+    private final Suggestion[] suggestions;
 
-    public SuggestionSet(boolean number, boolean stopWord, Set<Suggestion> suggestions) {
+    public SuggestionSet(boolean number, boolean stopWord, Suggestion[] suggestions) {
         this.number = number;
         this.stopWord = stopWord;
         this.suggestions = suggestions;
@@ -21,7 +21,7 @@ public class SuggestionSet {
         return stopWord;
     }
 
-    public Set<Suggestion> getSuggestions() {
+    public Suggestion[] getSuggestions() {
         return suggestions;
     }
 
@@ -30,7 +30,7 @@ public class SuggestionSet {
         return "{" +
                 "N=" + number +
                 ",S=" + stopWord +
-                ",[]=" + suggestions +
+                ",[]=" + StringUtils.join(suggestions, "\n") +
                 '}';
     }
 }

@@ -40,6 +40,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel.EdgeGram;
+import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
+
 public class SuggestionsBuilder {
 
     private final ESLogger logger = Loggers.getLogger(SuggestionsBuilder.class);
@@ -60,10 +63,12 @@ public class SuggestionsBuilder {
 
     private final CompletableFuture<SuggestionSet> NumberSuggestion = new CompletableFuture<>();
 
+    private final CompletableFuture<SuggestionSet> SingleLetterSuggestion = new CompletableFuture<>();
+
     private final Cache<String, CompletableFuture<SuggestionSet>> CachedCompletableResponses = CacheBuilder
             .newBuilder()
             .maximumSize(1000)
-            .expireAfterAccess(10, TimeUnit.SECONDS)
+            .expireAfterAccess(30, TimeUnit.SECONDS)
             .build();
 
     private final Cache<String, Set<String>> CachedEncodings = CacheBuilder
@@ -73,8 +78,22 @@ public class SuggestionsBuilder {
 
     private final ExecutorService futureExecutorService = new ThreadPoolExecutor(5, 5, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(100));
 
+    private int currentEncodingUtilIndex = 0;
+
+    private final int TotalEncodingUtils = 5;
+
+    private final PhoneticEncodingUtils[] phoneticEncodingUtilsArray = new PhoneticEncodingUtils[]{
+            new PhoneticEncodingUtils(),
+            new PhoneticEncodingUtils(),
+            new PhoneticEncodingUtils(),
+            new PhoneticEncodingUtils(),
+            new PhoneticEncodingUtils()
+    };
+
     private SuggestionsBuilder() {
         NumberSuggestion.complete(new SuggestionSet(true, false, null));
+
+        SingleLetterSuggestion.complete(new SuggestionSet(false, false, new Suggestion[0]));
 
         similarCharacterMap.put('j', 'z');
         similarCharacterMap.put('z', 'j');
@@ -106,33 +125,39 @@ public class SuggestionsBuilder {
         return words;
     }
 
-    private Set<String> encodings(PhoneticEncodingUtils tokenEncodingUtility, String token, boolean stopWord) {
+    private Set<String> encodings(String token, boolean stopWord) {
         try {
             return CachedEncodings.get(token, () -> {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Building encoding for token: {}", token);
                 }
 
-                return tokenEncodingUtility.buildEncodings(token, stopWord);
+                final PhoneticEncodingUtils phoneticEncodingUtils = phoneticEncodingUtilsArray[currentEncodingUtilIndex++ % TotalEncodingUtils];
+                synchronized (phoneticEncodingUtils) {
+                    return phoneticEncodingUtils.buildEncodings(token, stopWord);
+                }
             });
         } catch (ExecutionException e) {
             return null;
         }
     }
 
-    private String bigram(String word1, String word2) {
-        return word1 + word2;
-    }
-
-
     private BoolQueryBuilder buildWordQuery(String type, String field, String word, Set<String> phoneticEncodings) {
-        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery()
+        BoolQueryBuilder boolQueryBuilder = boolQuery()
                 .filter(QueryBuilders.typeQuery(type))
                 .should(QueryBuilders.termQuery(field, word).boost(100.0f));
 
         phoneticEncodings.stream().forEach(w -> {
 
             TermQueryBuilder termQueryBuilder = QueryBuilders.termQuery(field, w);
+
+            if (w.startsWith("gs#")) {
+                termQueryBuilder.boost(5.0f);
+            }
+
+            if (w.startsWith("ge#")) {
+                termQueryBuilder.boost(2.0f);
+            }
 
             boolQueryBuilder.should(termQueryBuilder);
         });
@@ -204,100 +229,219 @@ public class SuggestionsBuilder {
         return score;
     }
 
-    @SuppressWarnings("unchecked")
-    private void buildSuggestion(Map<String, Object> source, String inputWord, String suggestedWord, int inputWordLength, boolean ignorePrefixSuggestions, Map<String, Suggestion> suggestionMap) {
-        int totalCount = (int) source.get("totalCount");
-        int countAsFullWord = (int) source.get("countAsFullWord");
+    static class CandidateStats {
+        int editDistance;
+        int similarity;
+        double jwDistance;
+        double lDistance;
+        float score;
 
-        int distance = 0;
-        int similarity = inputWordLength;
-        boolean edgeGram = (countAsFullWord * 100.0 / totalCount) < 40.0;
-        MatchLevel matchLevel = MatchLevel.Exact;
-
-        if (!inputWord.equals(suggestedWord)) {
-            // suggested word is prefix of input word
-            if (ignorePrefixSuggestions && inputWord.startsWith(suggestedWord)) {
-                return;
-            }
-
-            // we have exact match here
-            // we select the word with proper edit distance
-            distance = StringUtils.getLevenshteinDistance(suggestedWord, inputWord);
-            similarity = getFuzzyDistance(suggestedWord, inputWord, Locale.ENGLISH);
-
-            // if input is prefix of suggested word
-            if (suggestedWord.startsWith(inputWord)) {
-                matchLevel = MatchLevel.EdgeGram;
-            } else {
-                matchLevel = MatchLevel.Phonetic;
-            }
+        public CandidateStats(int editDistance, int similarity, double jwDistance, double lDistance, float score) {
+            this.editDistance = editDistance;
+            this.similarity = similarity;
+            this.jwDistance = jwDistance;
+            this.lDistance = lDistance;
+            this.score = score;
         }
 
-        float similarityPercentage = Math.round(similarity * 10.0f / inputWordLength);
-        float editDistancePercentage = Math.round(distance * 10.0f / inputWordLength);
-        double jwDistance = StringUtils.getJaroWinklerDistance(inputWord, suggestedWord);
-        double lDistance = levensteinDistance.getDistance(inputWord, suggestedWord);
-
-        if (logger.isDebugEnabled()) {
-            logger.debug("For input: {}, found suggestion: {}, originalWords: {} with similarity: {}, edit: {}, JWD:{}, LD:{}",
-                    inputWord, suggestedWord, source.get("originalWords"),
-                    similarityPercentage, editDistancePercentage, jwDistance, lDistance);
-        }
-
-        // anything with more than 5.0 edit distance we ignore right away
-        if (editDistancePercentage > 4.0 || similarity < 4.0 && jwDistance < 0.75 && lDistance < 0.75) {
-            return;
-        }
-
-        if (edgeGram) {
-            if (matchLevel == MatchLevel.Phonetic) {
-                matchLevel = MatchLevel.EdgeGramPhonetic;
-            } else {
-                matchLevel = MatchLevel.EdgeGram;
-            }
-        } else {
-            addSuggestion(new Suggestion(suggestedWord, suggestedWord, matchLevel, distance, editDistancePercentage, similarity, similarityPercentage, totalCount), suggestionMap);
-        }
-
-        List<Map<String, Object>> originalWordsInfoList = (List<Map<String, Object>>) source.get("originalWords");
-        for (Map<String, Object> originalWordInfo : originalWordsInfoList) {
-            String originalWord = (String) originalWordInfo.get("word");
-            int originalWordCount = (int) originalWordInfo.get("totalCount");
-
-            // we count similarity with edgeGram
-            addSuggestion(new Suggestion(originalWord, suggestedWord, matchLevel, distance, editDistancePercentage, similarity, similarityPercentage, originalWordCount), suggestionMap);
+        @Override
+        public String toString() {
+            return "{" +
+                    "editDistance=" + editDistance +
+                    ", similarity=" + similarity +
+                    ", jwDistance=" + jwDistance +
+                    ", lDistance=" + lDistance +
+                    ", score=" + score +
+                    '}';
         }
     }
 
-    private Set<Suggestion> joinedWordSuggestions(String inputWord, SearchResponse searchResponse) {
-        if (searchResponse == null || searchResponse.getHits() == null || searchResponse.getHits().getHits() == null) {
-            return null;
+    @SuppressWarnings("unchecked")
+    private void buildSuggestion(CandidateStats bestStats,
+                                 CandidateStats previousStats,
+                                 CandidateStats currentStats,
+                                 Map<String, Object> source,
+                                 String inputWord,
+                                 Suggestion.TokenType tokenType,
+                                 String suggestedWord,
+                                 List<String> suggestedWordEncodings,
+                                 String display,
+                                 int inputWordLength,
+                                 boolean ignorePrefixSuggestions,
+                                 Map<String, Suggestion> suggestionMap) {
+        double totalWeight = (double) source.get("totalWeight");
+        int totalCount = (int) source.get("totalCount");
+        int countAsFullWord = (int) source.get("countAsFullWord");
+
+        boolean edgeGram = (countAsFullWord * 100.0 / totalCount) < 40.0;
+        MatchLevel matchLevel;
+
+        // suggested word is prefix of input word
+        if (ignorePrefixSuggestions && !inputWord.equals(suggestedWord) && (inputWord.startsWith(suggestedWord) || inputWord.endsWith(suggestedWord))) {
+            return;
         }
 
-        int inputWordLength = inputWord.length();
+        // 5 edit distance is too high, isn't it
+        if (currentStats.editDistance >= 5 || currentStats.lDistance < 0.5 || currentStats.jwDistance < 0.5) {
+            return;
+        }
 
-        Map<String, Suggestion> suggestionMap = new HashMap<>();
+        if (currentStats.editDistance >= 3) {
+            Set<String> inputWordEncodings = encodings(inputWord, StopWords.contains(inputWord));
 
-        for (SearchHit searchHit : searchResponse.getHits().getHits()) {
-            // check for exact suggestion
-            Map<String, Object> source = searchHit.getSource();
+            if (inputWordEncodings != null) {
+                int encodingMatches = 0;
+                for (String e : suggestedWordEncodings) {
+                    if (e != null && !e.startsWith("g#") && !e.startsWith("gs#") && !e.startsWith("ge#") && inputWordEncodings.contains(e)) {
+                        encodingMatches++;
+                    }
+                }
 
-            String suggestedWord1 = (String) source.get("word1");
-            String suggestedWord2 = (String) source.get("word2");
-            String suggestedWord = (String) source.get("word");
+                if (encodingMatches == 0) {
+                    return;
+                }
+            }
+        }
 
-            if (inputWord.length() <= suggestedWord1.length() + Math.min(2, suggestedWord2.length() / 2)) {
-                continue;
+        if (logger.isDebugEnabled()) {
+            logger.debug(">>>>> Building suggestion for input: {}, suggested: {}, best: {}, previous: {}, current: {}", inputWord, suggestedWord, bestStats, previousStats, currentStats);
+        }
+
+        if (bestStats != null) {
+            if (inputWordLength <= 4 && currentStats.editDistance / inputWordLength > 0.40) {
+                return;
             }
 
-            buildSuggestion(source, inputWord, suggestedWord, inputWordLength, false, suggestionMap);
+            if (inputWordLength > 4 && currentStats.editDistance / inputWordLength > 0.50) {
+                return;
+            }
+
+            // we relax at the most one edit distance from the best match
+            if (bestStats.editDistance + 1 < currentStats.editDistance) {
+                return;
+            }
+
+            // more than 25% drop in lDistance
+            if ((bestStats.lDistance - currentStats.lDistance) / currentStats.lDistance > 0.25) {
+                return;
+            }
+
+            // more than 25% drop in jwDistance
+            if ((bestStats.jwDistance - currentStats.jwDistance) / currentStats.jwDistance > 0.25) {
+                return;
+            }
+
+            // more than 3 times drop from best score
+            if (bestStats.score / currentStats.score > 3.0) {
+                return;
+            }
+
+            // more than 2.0 drop from previous score
+            if (previousStats != null && bestStats.score != previousStats.score && previousStats.score / currentStats.score > 2.0) {
+                return;
+            }
         }
 
-        if (suggestionMap.size() == 0) {
-            return null;
+        if (logger.isDebugEnabled()) {
+            logger.debug("<<<<< Included suggestion for input: {}, suggested: {}, best: {}, previous: {}, current: {}", inputWord, suggestedWord, bestStats, previousStats, currentStats);
         }
 
-        return suggestionSet(suggestionMap);
+        // TODO: if we are adding all original words, why it is needed ???
+        if (!edgeGram) {
+            if (StringUtils.equals(suggestedWord, inputWord)) {
+                matchLevel = MatchLevel.Exact;
+            } else if (suggestedWord.startsWith(inputWord)) {
+                matchLevel = EdgeGram;
+            } else {
+                matchLevel = MatchLevel.Phonetic;
+            }
+
+            addSuggestion(new Suggestion(tokenType,
+                            suggestedWord,
+                            suggestedWord,
+                            display,
+                            matchLevel,
+                            currentStats.editDistance,
+                            currentStats.similarity,
+                            currentStats.jwDistance,
+                            currentStats.lDistance,
+                            currentStats.score,
+                            totalWeight,
+                            totalCount),
+                    suggestionMap);
+        }
+
+        List<Map<String, Object>> originalWordsInfoList = (List<Map<String, Object>>) source.get("originalWords");
+//        int originalWordListSize = originalWordsInfoList.size();
+//        int suggestedWordLength = suggestedWord.length();
+
+        for (Map<String, Object> originalWordInfo : originalWordsInfoList) {
+            String originalWord = (String) originalWordInfo.get("word");
+            String originalDisplay = (String) originalWordInfo.get("display");
+            int originalWordCount = (int) originalWordInfo.get("totalCount");
+            double originalWordWeight = (double) originalWordInfo.get("totalWeight");
+
+            if (StringUtils.equals(originalWord, inputWord)) {
+                matchLevel = MatchLevel.Exact;
+            } else if (originalWord.startsWith(inputWord)) {
+                matchLevel = EdgeGram;
+            } else if (edgeGram) {
+                matchLevel = MatchLevel.EdgeGramPhonetic;
+            } else {
+                matchLevel = MatchLevel.Phonetic;
+            }
+
+            // we count similarity with edgeGram
+            addSuggestion(new Suggestion(tokenType,
+                            originalWord,
+                            suggestedWord,
+                            originalDisplay == null ? originalWord : originalDisplay,
+                            matchLevel,
+                            currentStats.editDistance /*+ (originalWordLength - suggestedWordLength)*/,
+                            currentStats.similarity,
+                            currentStats.jwDistance,
+                            currentStats.lDistance,
+                            currentStats.score,
+                            originalWordWeight,
+                            originalWordCount),
+                    suggestionMap);
+        }
+    }
+
+    private CandidateStats buildCandidateStats(String inputWord, String suggestedWord, float score) {
+        int distance = 0;
+        int similarity = 0;
+
+        if (!inputWord.equals(suggestedWord)) {
+            // we have exact match here
+            // we select the word with proper edit distance
+            distance = StringUtils.getLevenshteinDistance(inputWord, suggestedWord);
+            similarity = getFuzzyDistance(inputWord, suggestedWord, Locale.ENGLISH);
+        }
+
+        double jwDistance = StringUtils.getJaroWinklerDistance(inputWord, suggestedWord);
+        double lDistance = levensteinDistance.getDistance(inputWord, suggestedWord);
+
+        return new CandidateStats(distance, similarity, jwDistance, lDistance, score);
+    }
+
+    private CandidateStats bestCandidateStats(CandidateStats... candidateStatsArray) {
+        int editDistance = Integer.MAX_VALUE;
+        int similarity = 0;
+
+        double jwDistance = 0;
+        double lDistance = 0;
+        float score = 0f;
+
+        for (CandidateStats candidateStats : candidateStatsArray) {
+            editDistance = Math.min(editDistance, candidateStats.editDistance);
+            similarity = Math.max(similarity, candidateStats.similarity);
+            score = Math.max(score, candidateStats.score);
+            jwDistance = Math.max(jwDistance, candidateStats.jwDistance);
+            lDistance = Math.max(lDistance, candidateStats.lDistance);
+        }
+
+        return new CandidateStats(editDistance, similarity, jwDistance, lDistance, score);
     }
 
     @SuppressWarnings("unchecked")
@@ -310,13 +454,51 @@ public class SuggestionsBuilder {
 
         Map<String, Suggestion> suggestionMap = new HashMap<>();
 
-        for (SearchHit searchHit : searchResponse.getHits().getHits()) {
+        int hitsCount = searchResponse.getHits().getHits().length;
+
+        CandidateStats[] candidateStatsArray = buildAllCandidateStats(inputWord, searchResponse, hitsCount);
+
+        CandidateStats bestCandidateStats = bestCandidateStats(candidateStatsArray);
+
+        for (int i = 0; i < hitsCount; i++) {
+            SearchHit searchHit = searchResponse.getHits().getHits()[i];
+
             // check for exact suggestion
             Map<String, Object> source = searchHit.getSource();
 
-            String suggestedWord = (String) source.get("word");
+            String type = searchHit.type();
 
-            buildSuggestion(source, inputWord, suggestedWord, inputWordLength, ignorePrefixSuggestions, suggestionMap);
+            String suggestedWord = (String) source.get("word");
+            String displayWord;
+
+            Suggestion.TokenType tokenType;
+
+            if (Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE.equals(type)) {
+                displayWord = suggestedWord;
+                tokenType = Suggestion.TokenType.Uni;
+            } else {
+                String suggestedWord1 = (String) source.get("word1");
+                String suggestedWord2 = (String) source.get("word2");
+                displayWord = suggestedWord1 + " " + suggestedWord2;
+                tokenType = Suggestion.TokenType.Bi;
+
+                if (inputWord.length() <= suggestedWord1.length() + Math.min(2, suggestedWord2.length() / 2)) {
+                    continue;
+                }
+            }
+
+            buildSuggestion(bestCandidateStats,
+                    i > 0 ? candidateStatsArray[i - 1] : null,
+                    candidateStatsArray[i],
+                    source,
+                    inputWord,
+                    tokenType,
+                    suggestedWord,
+                    (List<String>) source.get("encodings"),
+                    displayWord,
+                    inputWordLength,
+                    ignorePrefixSuggestions,
+                    suggestionMap);
         }
 
         if (suggestionMap.size() == 0) {
@@ -326,24 +508,49 @@ public class SuggestionsBuilder {
         return suggestionSet(suggestionMap);
     }
 
+    private CandidateStats[] buildAllCandidateStats(String inputWord, SearchResponse searchResponse, int hitsCount) {
+        CandidateStats[] candidateStats = new CandidateStats[hitsCount];
+
+        for (int i = 0; i < hitsCount; i++) {
+            SearchHit searchHit = searchResponse.getHits().getHits()[i];
+
+            Map<String, Object> source = searchHit.getSource();
+
+            String suggestedWord = (String) source.get("word");
+
+            // check for exact suggestion
+            candidateStats[i] = buildCandidateStats(inputWord, suggestedWord, searchHit.score());
+        }
+
+        return candidateStats;
+    }
+
     private SortedSet<Suggestion> suggestionSet(Map<String, Suggestion> suggestionMap) {
-        // todo: do this on a flag = strict, but for now we are doing for all
+        // todo: do this restriction only on a flag = strict, but for now we are doing for all
         boolean hasExactMatch = false;
         boolean hasEdgeGramMatch = false;
+        boolean hasPhoneticMatch = false;
         for (Suggestion suggestion : suggestionMap.values()) {
-            if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+            if (suggestion.getMatchLevel() == EdgeGram) {
                 hasEdgeGramMatch = true;
             } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
                 hasExactMatch = true;
+            } else if (suggestion.getMatchLevel() == MatchLevel.Phonetic) {
+                hasPhoneticMatch = true;
             }
         }
 
         SortedSet<Suggestion> suggestions = new TreeSet<>();
         for (Suggestion suggestion : suggestionMap.values()) {
-            if (!hasExactMatch && !hasEdgeGramMatch || suggestion.getMatchLevel() == MatchLevel.EdgeGram || suggestion.getMatchLevel() == MatchLevel.Exact) {
-                // logger.debug("Adding suggestion: {}", suggestion);
-                suggestions.add(suggestion);
+            if ((hasExactMatch || hasEdgeGramMatch) && suggestion.getMatchLevel().getLevel() > MatchLevel.EdgeGram.getLevel()) {
+                continue;
             }
+
+            if (hasPhoneticMatch && suggestion.getMatchLevel().getLevel() > MatchLevel.Phonetic.getLevel()) {
+                continue;
+            }
+
+            suggestions.add(suggestion);
         }
 
         return suggestions;
@@ -410,6 +617,10 @@ public class SuggestionsBuilder {
 
             boolean stopWord = StopWords.contains(word);
 
+            if (word.length() == 1) {
+                return store(key, word, SingleLetterSuggestion);
+            }
+
             CompletableFuture<SuggestionSet> future = CachedCompletableResponses.get(key(key), () -> future(key, word, stopWord, builder.apply(stopWord)));
 
             return store(key, word, future);
@@ -421,95 +632,81 @@ public class SuggestionsBuilder {
             }
 
             return CompletableFuture
-                    .supplyAsync(() -> client.prepareSearch(indices).setQuery(queryBuilder).execute().actionGet(500, TimeUnit.MILLISECONDS), futureExecutorService)
+                    .supplyAsync(() -> client.prepareSearch(indices).setSize(25).setQuery(queryBuilder).execute().actionGet(500, TimeUnit.MILLISECONDS), futureExecutorService)
                     .exceptionally(error -> {
                         logger.error("Error in executing future for key: {}, word: {} indices: {}", error, key, word, indices);
                         return null;
                     })
                     .thenApply(searchResponse -> {
-                        Set<Suggestion> suggestions;
+                        boolean ignorePrefixSuggestions = key.endsWith("/compoundUni") || key.endsWith("/compoundBi");
 
-                        if (key.endsWith("/joined")) {
-                            suggestions = joinedWordSuggestions(word, searchResponse);
-                        } else {
-                            boolean ignorePrefixSuggestions = key.endsWith("/compoundUni") || key.endsWith("/compoundBi");
+                        Set<Suggestion> suggestions = wordSuggestions(word, searchResponse, ignorePrefixSuggestions);
 
-                            suggestions = wordSuggestions(word, searchResponse, ignorePrefixSuggestions);
-                        }
-
-                        return new SuggestionSet(false, stopWord, suggestions);
+                        return new SuggestionSet(false, stopWord, suggestions == null ? null : suggestions.toArray(new Suggestion[suggestions.size()]));
                     });
-        }
-        
-        private void unigramWordMatch(Conjunct conjunct, String key, String word) throws ExecutionException {
-            getOrBuildFuture(key, word, (stopWord) -> {
-                Set<String> encodings = encodings(tokenEncodingUtility, word, stopWord);
-
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Encoding for word {} = {}", word, encodings);
-                }
-
-                return buildWordQuery(Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
-            });
         }
 
         private void unigramWordMatch(Conjunct conjunct) throws ExecutionException {
             String key = conjunct.getKey();
             String word = conjunct.getTokens().get(0);
 
-            unigramWordMatch(conjunct, key, word);            
-        }
-
-        private void joinedWordMatch(Conjunct conjunct) throws ExecutionException {
-            String key = conjunct.getKey() + "/joined";
-            String word = conjunct.getTokens().get(0);
-
             getOrBuildFuture(key, word, (stopWord) -> {
-                Set<String> encodings = encodings(tokenEncodingUtility, word, stopWord);
+                Set<String> encodings = encodings(word, stopWord);
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Encoding for word {} = {}", word, encodings);
                 }
 
-                return buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings);
+                return new BoolQueryBuilder()
+                        .should(buildWordQuery(Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings))
+                        .should(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings))
+                        .minimumNumberShouldMatch(1);
+
             });
-        }
-
-        private void shingleWordMatch(Conjunct conjunct) throws ExecutionException {
-            //if (conjunct.getLength() == 2) {
-            // we can form bigram query for these
-            String word1 = conjunct.getTokens().get(0);
-            String word2 = conjunct.getTokens().get(1);
-
-            String key = conjunct.getKey() + "/shingle";
-            String word = bigram(word1, word2);
-
-            getOrBuildFuture(key, word, (stopWord) -> {
-                Set<String> word1Encodings = encodings(tokenEncodingUtility, word1, stopWord);
-                Set<String> word2Encodings = encodings(tokenEncodingUtility, word2, stopWord);
-
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Encoding for word 1 {} = {}", word1, word1Encodings);
-                    logger.debug("Encoding for word 2 {} = {}", word2, word2Encodings);
-                }
-
-                return QueryBuilders.boolQuery()
-                        .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word1Encodings", word1, word1Encodings))
-                        .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word2Encodings", word2, word2Encodings));
-            });
-            //}
         }
 
         @SuppressWarnings("unchecked")
         private void compoundWordMatch(Conjunct conjunct) throws ExecutionException {
-            String key = conjunct.getKey() + "/compoundUni";
             String word = StringUtils.join(conjunct.getTokens(), "");
-            
-            unigramWordMatch(conjunct, key, word);
+            String key = conjunct.getKey();
 
-            key = conjunct.getKey() + "/compoundBi";
+            getOrBuildFuture(key, word, (stopWord) -> {
+                Set<String> encodings = encodings(word, stopWord);
 
-            unigramWordMatch(conjunct, key, word);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Encoding for word {} = {}", word, encodings);
+                }
+
+                QueryBuilder shingleQueryBuilder = null;
+                if (conjunct.getLength() == 2) {
+                    // we can form bigram query for these
+                    String word1 = conjunct.getTokens().get(0);
+                    String word2 = conjunct.getTokens().get(1);
+
+                    Set<String> word1Encodings = encodings(word1, stopWord);
+                    Set<String> word2Encodings = encodings(word2, stopWord);
+
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Encoding for word 1 {} = {}", word1, word1Encodings);
+                        logger.debug("Encoding for word 2 {} = {}", word2, word2Encodings);
+                    }
+
+                    shingleQueryBuilder = QueryBuilders.boolQuery()
+                            .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word1Encodings", word1, word1Encodings))
+                            .must(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "word2Encodings", word2, word2Encodings));
+                }
+
+                BoolQueryBuilder boolQueryBuilder = new BoolQueryBuilder()
+                        .should(buildWordQuery(Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings))
+                        .should(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, "encodings", word, encodings))
+                        .minimumNumberShouldMatch(1);
+
+                if (shingleQueryBuilder != null) {
+                    boolQueryBuilder.should(shingleQueryBuilder);
+                }
+
+                return boolQueryBuilder;
+            });
         }
 
         private String key(String key) {
@@ -526,9 +723,7 @@ public class SuggestionsBuilder {
             for (Conjunct conjunct : conjuncts) {
                 if (conjunct.getLength() == 1) {
                     unigramWordMatch(conjunct);
-                    joinedWordMatch(conjunct);
                 } else {
-                    shingleWordMatch(conjunct);
                     compoundWordMatch(conjunct);
                 }
             }

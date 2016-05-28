@@ -147,7 +147,9 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
             parseContext.addNamedQuery(queryName, query);
         }
 
-        logger.info("For queryText: {} and index: {} built query: {} in {}ms", queryText, parseContext.index().name(), query, (System.currentTimeMillis() - startTime));
+        if (logger.isDebugEnabled()) {
+            logger.debug("For queryText: {} and index: {} built query: {} in {}ms", queryText, parseContext.index().name(), query, (System.currentTimeMillis() - startTime));
+        }
 
         return query;
     }

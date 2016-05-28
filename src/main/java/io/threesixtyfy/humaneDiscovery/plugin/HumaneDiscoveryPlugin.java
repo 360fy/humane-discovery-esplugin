@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.plugin;
 
 import com.google.common.collect.ImmutableList;
+import io.threesixtyfy.humaneDiscovery.analyzer.HumaneDescriptiveTextAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.analyzer.HumaneEdgeGramQueryAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.analyzer.HumaneKeywordAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.analyzer.HumaneQueryAnalyzerProvider;
@@ -12,6 +13,8 @@ import io.threesixtyfy.humaneDiscovery.didYouMean.action.DidYouMeanAction;
 import io.threesixtyfy.humaneDiscovery.didYouMean.action.TransportDidYouMeanAction;
 import io.threesixtyfy.humaneDiscovery.didYouMean.builder.DidYouMeanBuilderService;
 import io.threesixtyfy.humaneDiscovery.didYouMean.rest.DidYouMeanRestAction;
+import io.threesixtyfy.humaneDiscovery.mapper.HumaneDescriptiveTextFieldMapper;
+import io.threesixtyfy.humaneDiscovery.mapper.HumaneTextFieldMapper;
 import io.threesixtyfy.humaneDiscovery.query.HumaneQueryParser;
 import io.threesixtyfy.humaneDiscovery.query.MultiFieldHumaneQueryParser;
 import io.threesixtyfy.humaneDiscovery.tokenFilter.EdgeGramTokenFilterFactory;
@@ -19,6 +22,8 @@ import io.threesixtyfy.humaneDiscovery.tokenFilter.HumaneTokenFilterFactory;
 import io.threesixtyfy.humaneDiscovery.tokenFilter.PrefixTokenFilterFactory;
 import org.elasticsearch.action.ActionModule;
 import org.elasticsearch.common.component.LifecycleComponent;
+import org.elasticsearch.common.logging.ESLogger;
+import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.index.analysis.AnalysisModule;
 import org.elasticsearch.indices.IndicesModule;
 import org.elasticsearch.plugins.Plugin;
@@ -27,6 +32,8 @@ import org.elasticsearch.rest.RestModule;
 import java.util.Collection;
 
 public class HumaneDiscoveryPlugin extends Plugin {
+
+    private final ESLogger logger = Loggers.getLogger(HumaneDiscoveryPlugin.class);
 
     @Override
     public String name() {
@@ -39,6 +46,9 @@ public class HumaneDiscoveryPlugin extends Plugin {
     }
 
     public void onModule(IndicesModule module) {
+        module.registerMapper("humane_text", new HumaneTextFieldMapper.TypeParser());
+        module.registerMapper("humane_descriptive_text", new HumaneDescriptiveTextFieldMapper.TypeParser());
+
         module.registerQueryParser(HumaneQueryParser.class);
         module.registerQueryParser(MultiFieldHumaneQueryParser.class);
     }
@@ -49,6 +59,7 @@ public class HumaneDiscoveryPlugin extends Plugin {
         module.addTokenFilter("humane_edgeGram", EdgeGramTokenFilterFactory.class);
 
         module.addAnalyzer("humane_text_analyzer", HumaneTextAnalyzerProvider.class);
+        module.addAnalyzer("humane_descriptive_text_analyzer", HumaneDescriptiveTextAnalyzerProvider.class);
         module.addAnalyzer("humane_shingle_text_analyzer", HumaneShingleTextAnalyzerProvider.class);
         module.addAnalyzer("humane_query_analyzer", HumaneQueryAnalyzerProvider.class);
         module.addAnalyzer("humane_edgeGram_query_analyzer", HumaneEdgeGramQueryAnalyzerProvider.class);

@@ -1,6 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.analyzer;
 
-import io.threesixtyfy.humaneDiscovery.tokenFilter.EdgeGramTokenFilterFactory;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.assistedinject.Assisted;
 import org.elasticsearch.common.settings.Settings;
