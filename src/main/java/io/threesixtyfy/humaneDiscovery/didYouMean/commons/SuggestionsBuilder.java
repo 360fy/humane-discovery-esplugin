@@ -18,6 +18,7 @@ import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.SearchHitField;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -260,18 +261,18 @@ public class SuggestionsBuilder {
     private void buildSuggestion(CandidateStats bestStats,
                                  CandidateStats previousStats,
                                  CandidateStats currentStats,
-                                 Map<String, Object> source,
+                                 SearchHit searchHit,
                                  String inputWord,
                                  Suggestion.TokenType tokenType,
                                  String suggestedWord,
-                                 List<String> suggestedWordEncodings,
                                  String display,
                                  int inputWordLength,
                                  boolean ignorePrefixSuggestions,
                                  Map<String, Suggestion> suggestionMap) {
-        double totalWeight = (double) source.get("totalWeight");
-        int totalCount = (int) source.get("totalCount");
-        int countAsFullWord = (int) source.get("countAsFullWord");
+        double totalWeight = fieldValue(searchHit, "totalWeight");
+        int totalCount = fieldValue(searchHit, "totalCount");
+        int countAsFullWord = fieldValue(searchHit, "countAsFullWord");
+        List<Object> suggestedWordEncodings = fieldValues(searchHit, "encodings");
 
         boolean edgeGram = (countAsFullWord * 100.0 / totalCount) < 40.0;
         MatchLevel matchLevel;
@@ -291,8 +292,9 @@ public class SuggestionsBuilder {
 
             if (inputWordEncodings != null) {
                 int encodingMatches = 0;
-                for (String e : suggestedWordEncodings) {
-                    if (e != null && !e.startsWith("g#") && !e.startsWith("gs#") && !e.startsWith("ge#") && inputWordEncodings.contains(e)) {
+                for (Object e : suggestedWordEncodings) {
+                    String encoding = (String) e;
+                    if (e != null && !encoding.startsWith("g#") && !encoding.startsWith("gs#") && !encoding.startsWith("ge#") && inputWordEncodings.contains(e)) {
                         encodingMatches++;
                     }
                 }
@@ -371,11 +373,10 @@ public class SuggestionsBuilder {
                     suggestionMap);
         }
 
-        List<Map<String, Object>> originalWordsInfoList = (List<Map<String, Object>>) source.get("originalWords");
-//        int originalWordListSize = originalWordsInfoList.size();
-//        int suggestedWordLength = suggestedWord.length();
+        List<Map<String, Object>> originalWordsInfoList = (List<Map<String, Object>>) searchHit.sourceAsMap().get("originalWords");
 
-        for (Map<String, Object> originalWordInfo : originalWordsInfoList) {
+        for (Object originalWordData : originalWordsInfoList) {
+            Map<String, Object> originalWordInfo = (Map<String, Object>) originalWordData;
             String originalWord = (String) originalWordInfo.get("word");
             String originalDisplay = (String) originalWordInfo.get("display");
             int originalWordCount = (int) originalWordInfo.get("totalCount");
@@ -444,6 +445,24 @@ public class SuggestionsBuilder {
         return new CandidateStats(editDistance, similarity, jwDistance, lDistance, score);
     }
 
+    private <V> V fieldValue(SearchHit searchHit, String field) {
+        SearchHitField searchHitField = searchHit.field(field);
+        if (searchHitField != null) {
+            return searchHitField.value();
+        }
+
+        throw new IllegalArgumentException("Field value not found for: " + field);
+    }
+
+    private List<Object> fieldValues(SearchHit searchHit, String field) {
+        SearchHitField searchHitField = searchHit.field(field);
+        if (searchHitField != null) {
+            return searchHitField.values();
+        }
+
+        throw new IllegalArgumentException("Field values not found for: " + field);
+    }
+
     @SuppressWarnings("unchecked")
     private Set<Suggestion> wordSuggestions(String inputWord, SearchResponse searchResponse, boolean ignorePrefixSuggestions) {
         if (searchResponse == null || searchResponse.getHits() == null || searchResponse.getHits().getHits() == null) {
@@ -463,12 +482,10 @@ public class SuggestionsBuilder {
         for (int i = 0; i < hitsCount; i++) {
             SearchHit searchHit = searchResponse.getHits().getHits()[i];
 
-            // check for exact suggestion
-            Map<String, Object> source = searchHit.getSource();
-
             String type = searchHit.type();
 
-            String suggestedWord = (String) source.get("word");
+            String suggestedWord = fieldValue(searchHit, "word");
+
             String displayWord;
 
             Suggestion.TokenType tokenType;
@@ -477,8 +494,8 @@ public class SuggestionsBuilder {
                 displayWord = suggestedWord;
                 tokenType = Suggestion.TokenType.Uni;
             } else {
-                String suggestedWord1 = (String) source.get("word1");
-                String suggestedWord2 = (String) source.get("word2");
+                String suggestedWord1 = fieldValue(searchHit, "word1");
+                String suggestedWord2 = fieldValue(searchHit, "word2");
                 displayWord = suggestedWord1 + " " + suggestedWord2;
                 tokenType = Suggestion.TokenType.Bi;
 
@@ -490,11 +507,10 @@ public class SuggestionsBuilder {
             buildSuggestion(bestCandidateStats,
                     i > 0 ? candidateStatsArray[i - 1] : null,
                     candidateStatsArray[i],
-                    source,
+                    searchHit,
                     inputWord,
                     tokenType,
                     suggestedWord,
-                    (List<String>) source.get("encodings"),
                     displayWord,
                     inputWordLength,
                     ignorePrefixSuggestions,
@@ -514,12 +530,8 @@ public class SuggestionsBuilder {
         for (int i = 0; i < hitsCount; i++) {
             SearchHit searchHit = searchResponse.getHits().getHits()[i];
 
-            Map<String, Object> source = searchHit.getSource();
-
-            String suggestedWord = (String) source.get("word");
-
             // check for exact suggestion
-            candidateStats[i] = buildCandidateStats(inputWord, suggestedWord, searchHit.score());
+            candidateStats[i] = buildCandidateStats(inputWord, fieldValue(searchHit, "word"), searchHit.score());
         }
 
         return candidateStats;
@@ -587,8 +599,6 @@ public class SuggestionsBuilder {
         final String[] indices;
         final String id;
 
-        final PhoneticEncodingUtils tokenEncodingUtility = new PhoneticEncodingUtils();
-
         final List<String> queryKeys = new ArrayList<>();
         final Map<String, String> queryKeyToWordMap = new HashMap<>();
         final List<CompletableFuture<SuggestionSet>> suggestionResponses = new ArrayList<>();
@@ -632,7 +642,19 @@ public class SuggestionsBuilder {
             }
 
             return CompletableFuture
-                    .supplyAsync(() -> client.prepareSearch(indices).setSize(25).setQuery(queryBuilder).execute().actionGet(500, TimeUnit.MILLISECONDS), futureExecutorService)
+                    .supplyAsync(() -> client.prepareSearch(indices)
+                            .setSize(25)
+                            .setQuery(queryBuilder)
+                            .addFieldDataField("encodings")
+                            .addField("totalWeight")
+                            .addField("totalCount")
+                            .addField("countAsFullWord")
+                            .addFieldDataField("word")
+                            .addFieldDataField("word1")
+                            .addFieldDataField("word2")
+                            .setFetchSource("originalWords.*", null)
+                            .execute()
+                            .actionGet(500, TimeUnit.MILLISECONDS), futureExecutorService)
                     .exceptionally(error -> {
                         logger.error("Error in executing future for key: {}, word: {} indices: {}", error, key, word, indices);
                         return null;

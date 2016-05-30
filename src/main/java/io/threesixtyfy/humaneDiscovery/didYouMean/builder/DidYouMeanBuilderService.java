@@ -604,6 +604,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     private XContentBuilder getUnigramMapping() {
         try {
             return XContentBuilder.builder(JsonXContent.jsonXContent).startObject().startObject(UNIGRAM_DID_YOU_MEAN_INDEX_TYPE)
+                    .startObject("_all").field("enabled", "false").endObject()
+
                     .startObject("properties")
 
                     // word
@@ -712,6 +714,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     private XContentBuilder getBigramMapping() {
         try {
             return XContentBuilder.builder(JsonXContent.jsonXContent).startObject().startObject(BIGRAM_DID_YOU_MEAN_INDEX_TYPE)
+                    .startObject("_all").field("enabled", "false").endObject()
+
                     .startObject("properties")
 
                     // word
