@@ -333,7 +333,7 @@ public class HumaneQuery extends Query {
 
         int numTokens = tokens.size();
 
-        if (numTokens == 0) {
+        if (numTokens == 0 || numTokens >= 6) {
             return null;
         }
 
