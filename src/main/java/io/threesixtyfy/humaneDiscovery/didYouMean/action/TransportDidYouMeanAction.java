@@ -66,7 +66,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
     @SuppressWarnings("unchecked")
     private DidYouMeanResponse buildResponse(List<String> tokens, long startTime, String... didYouMeanIndex) {
         if (tokens == null || tokens.size() >= 6) {
-            return null;
+            return emptyResponse(startTime);
         }
 
         Map<String, Conjunct> conjunctMap = new HashMap<>();
