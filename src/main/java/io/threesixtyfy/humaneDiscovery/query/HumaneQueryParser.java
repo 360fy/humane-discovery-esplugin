@@ -17,9 +17,17 @@ import java.io.IOException;
 
 public class HumaneQueryParser implements QueryParser {
 
+    public static final String FIELD_QUERY = "query";
+    public static final String FIELD_BOOST = "boost";
+    public static final String FIELD_NO_FUZZY = "noFuzzy";
+    public static final String FIELD_NAME = "_name";
+    public static final String FIELD_VERNACULAR_ONLY = "vernacularOnly";
+    public static final float DEFAULT_BOOST = 1.0f;
+
     private final ESLogger logger = Loggers.getLogger(HumaneQueryParser.class);
 
-    public static final String NAME = "humane_query";
+    public static final String HUMANE_QUERY = "humane_query";
+    public static final String HumaneQuery = "humaneQuery";
 
     private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
 
@@ -32,7 +40,7 @@ public class HumaneQueryParser implements QueryParser {
 
     @Override
     public String[] names() {
-        return new String[]{NAME, "humaneQuery"};
+        return new String[]{HUMANE_QUERY, HumaneQuery};
     }
 
     @Override
@@ -56,7 +64,7 @@ public class HumaneQueryParser implements QueryParser {
                 currentFieldName = parser.currentName();
             } else {
                 if (queryField.name != null) {
-                    throw new QueryParsingException(parseContext, "[" + NAME + "] query does not multi fields [" + currentFieldName + "], already seen [" + queryField.name + "]");
+                    throw new QueryParsingException(parseContext, "[" + HUMANE_QUERY + "] query does not multi fields [" + currentFieldName + "], already seen [" + queryField.name + "]");
                 }
 
                 queryField.name = currentFieldName;
@@ -67,22 +75,22 @@ public class HumaneQueryParser implements QueryParser {
                     while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
                         if (token == XContentParser.Token.FIELD_NAME) {
                             currentFieldName = parser.currentName();
-                        } else if ("query".equals(currentFieldName)) {
+                        } else if (FIELD_QUERY.equals(currentFieldName)) {
                             queryText = parser.objectText();
-                        } else if ("boost".equals(currentFieldName)) {
+                        } else if (FIELD_BOOST.equals(currentFieldName)) {
                             queryField.boost = parser.floatValue();
-                        } else if ("noFuzzy".equals(currentFieldName)) {
+                        } else if (FIELD_NO_FUZZY.equals(currentFieldName)) {
                             queryField.noFuzzy = parser.booleanValue();
-                        } else if ("_name".equals(currentFieldName)) {
+                        } else if (FIELD_NAME.equals(currentFieldName)) {
                             queryName = parser.text();
-                        } else if ("vernacularOnly".equals(currentFieldName)) {
+                        } else if (FIELD_VERNACULAR_ONLY.equals(currentFieldName)) {
                             queryField.vernacularOnly = parser.booleanValue();
                         } else {
-                            throw new QueryParsingException(parseContext, "[" + NAME + "] query does not support [" + currentFieldName + "]");
+                            throw new QueryParsingException(parseContext, "[" + HUMANE_QUERY + "] query does not support [" + currentFieldName + "]");
                         }
                     }
                 } else {
-                    throw new QueryParsingException(parseContext, "[" + NAME + "] query does not support [" + token + "]");
+                    throw new QueryParsingException(parseContext, "[" + HUMANE_QUERY + "] query does not support [" + token + "]");
                 }
             }
         }
@@ -100,9 +108,9 @@ public class HumaneQueryParser implements QueryParser {
             return Queries.newMatchNoDocsQuery();
         }
 
-        if (queryField.boost != 1.0f) {
-            query = new BoostQuery(query, queryField.boost);
-        }
+//        if (queryField.boost != DEFAULT_BOOST) {
+//            query = new BoostQuery(query, queryField.boost);
+//        }
 
         if (queryName != null) {
             parseContext.addNamedQuery(queryName, query);

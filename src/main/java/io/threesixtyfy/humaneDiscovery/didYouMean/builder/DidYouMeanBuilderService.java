@@ -609,22 +609,22 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // word
-                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("word").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // encodings
-                    .startObject("encodings").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("encodings").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // weight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // field stats start
                     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -635,19 +635,19 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -662,19 +662,19 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -688,16 +688,16 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // word
-                    .startObject("word").field("type", "string").field("index", "no").endObject()
+                    .startObject("word").field("type", "string").field("index", "no").field("store", "no").endObject()
 
                     // display
-                    .startObject("display").field("type", "string").field("index", "no").endObject()
+                    .startObject("display").field("type", "string").field("index", "no").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -719,34 +719,34 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // word
-                    .startObject("word").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("word").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // word1
-                    .startObject("word1").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("word1").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // word2
-                    .startObject("word2").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("word2").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // encodings
-                    .startObject("encodings").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("encodings").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // word1 encodings
-                    .startObject("word1Encodings").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("word1Encodings").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // word2 encodings
-                    .startObject("word2Encodings").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("word2Encodings").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // weight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // field stats start
                     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -757,19 +757,19 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -784,19 +784,19 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").endObject()
+                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -810,16 +810,16 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("properties")
 
                     // name
-                    .startObject("word").field("type", "string").field("index", "no").endObject()
+                    .startObject("word").field("type", "string").field("index", "no").field("store", "no").endObject()
 
                     // display
-                    .startObject("display").field("type", "string").field("index", "no").endObject()
+                    .startObject("display").field("type", "string").field("index", "no").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").endObject()
+                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").endObject()
+                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

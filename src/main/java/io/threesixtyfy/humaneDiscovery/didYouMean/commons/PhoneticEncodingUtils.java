@@ -10,7 +10,14 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.GRAM_END_PREFIX;
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.GRAM_PREFIX;
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.GRAM_START_PREFIX;
+
 public class PhoneticEncodingUtils {
+
+    public static final int MIN_PHONETIC_ENCODING_LENGTH = 3;
+    public static final int NO_ENCODING_LENGTH = 1;
 
     private final ESLogger logger = Loggers.getLogger(PhoneticEncodingUtils.class);
 
@@ -28,7 +35,7 @@ public class PhoneticEncodingUtils {
         int wordLength = word.length();
 
         // we do not add phonetic encodings for 2 or less size
-        if (wordLength == 1 || stopWord) {
+        if (wordLength == NO_ENCODING_LENGTH || stopWord) {
             return encodings;
         }
 
@@ -41,18 +48,18 @@ public class PhoneticEncodingUtils {
                 String gram = word.substring(i, i + ng);
 
                 if (i == 0) {
-                    encodings.add("gs#" + gram);
+                    encodings.add(GRAM_START_PREFIX + gram);
                 }
 
-                encodings.add("g#" + gram);
+                encodings.add(GRAM_PREFIX + gram);
                 end = gram;
             }
             if (end != null) { // may not be present if len==ng1
-                encodings.add("ge#" + end);
+                encodings.add(GRAM_END_PREFIX + end);
             }
         }
 
-        if (wordLength == 2) {
+        if (wordLength < MIN_PHONETIC_ENCODING_LENGTH) {
             return encodings;
         }
 
@@ -96,6 +103,7 @@ public class PhoneticEncodingUtils {
         if (l >= 5) {
             return 2;
         }
+
         return 1;
     }
 
@@ -103,10 +111,33 @@ public class PhoneticEncodingUtils {
         if (l > 5) {
             return 4;
         }
+
         if (l == 5) {
             return 3;
         }
+
         return 2;
+    }
+
+//    public static class Factory extends BasePooledObjectFactory<PhoneticEncodingUtils> {
+//
+//        @Override
+//        public PhoneticEncodingUtils create() throws Exception {
+//            return new PhoneticEncodingUtils();
+//        }
+//
+//        @Override
+//        public PooledObject<PhoneticEncodingUtils> wrap(PhoneticEncodingUtils phoneticEncodingUtils) {
+//            return new DefaultPooledObject<>(phoneticEncodingUtils);
+//        }
+//    }
+
+    public static class Factory implements FastObjectPool.PoolFactory<PhoneticEncodingUtils> {
+
+        @Override
+        public PhoneticEncodingUtils create() {
+            return new PhoneticEncodingUtils();
+        }
     }
 }
 

@@ -4,7 +4,8 @@ public enum MatchLevel {
     Exact(0),
     EdgeGram(1),
     Phonetic(2),
-    EdgeGramPhonetic(3);
+    EdgeGramPhonetic(3),
+    Synonym(4);
 
     final int level;
 

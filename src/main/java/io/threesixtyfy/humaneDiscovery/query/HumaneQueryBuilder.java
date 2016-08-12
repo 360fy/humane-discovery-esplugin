@@ -43,7 +43,7 @@ public class HumaneQueryBuilder extends QueryBuilder implements BoostableQueryBu
 
     @Override
     public void doXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject(HumaneQueryParser.NAME);
+        builder.startObject(HumaneQueryParser.HUMANE_QUERY);
         builder.startObject(name);
 
         builder.field("query", text);
