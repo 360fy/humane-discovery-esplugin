@@ -22,10 +22,8 @@ import org.elasticsearch.search.SearchHitField;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -50,7 +48,7 @@ public class SuggestionsBuilder {
     public static final String HUMANE_QUERY_ANALYZER = "humane_query_analyzer";
     public static final String DUMMY_FIELD = "dummyField";
     public static final float GRAM_START_BOOST = 5.0f;
-    public static final float GRAM_END_BOOST = 2.0f;
+    public static final float GRAM_END_BOOST = 10.0f;
     public static final float EXACT_TERM_BOOST = 100.0f;
     public static final int MINIMUM_NUMBER_SHOULD_MATCH = 2;
     public static final String FIELD_TOTAL_WEIGHT = "totalWeight";
@@ -73,14 +71,6 @@ public class SuggestionsBuilder {
     private final Map<Character, Character> similarCharacterMap = new HashMap<>();
 
     private final LevensteinDistance levensteinDistance = new LevensteinDistance();
-
-    private final Set<String> StopWords = new HashSet<>(Arrays.asList(
-            /*"a",*/ "an", "and", "are", "as", "at", "be", "but", "by",
-            "for", "if", /*"in",*/ "into", "is", "it",
-            "no", "not", "of", "on", "or", "such",
-            "that", "the", "their", "then", "there", "these",
-            "they", "this", "to", "was", "will", "with"
-    ));
 
     private final Map<String, String[]> synonyms = new HashMap<>();
 
@@ -114,14 +104,15 @@ public class SuggestionsBuilder {
 
         phoneticEncodingUtilsPool = new FastObjectPool<>(new PhoneticEncodingUtils.Factory(), 20);
 
-        synonyms.put("tablet", new String[] {"tablets"});
-        synonyms.put("tablets", new String[] {"tablet"});
-        synonyms.put("injection", new String[] {"injections"});
-        synonyms.put("injections", new String[] {"injection"});
-        synonyms.put("advance", new String[] {"advanced"});
-        synonyms.put("advanced", new String[] {"advance"});
-        synonyms.put("capsule", new String[] {"capsules"});
-        synonyms.put("capsules", new String[] {"capsule"});
+        synonyms.put("tablet", new String[]{"tablets"});
+        synonyms.put("tablets", new String[]{"tablet"});
+        synonyms.put("injection", new String[]{"injections"});
+        synonyms.put("injections", new String[]{"injection"});
+        synonyms.put("advance", new String[]{"advanced"});
+        synonyms.put("advanced", new String[]{"advance"});
+        synonyms.put("capsule", new String[]{"capsules"});
+        synonyms.put("capsules", new String[]{"capsule"});
+        synonyms.put("hilamya", new String[]{"himalaya"});
     }
 
     public static SuggestionsBuilder INSTANCE() {
@@ -445,27 +436,21 @@ public class SuggestionsBuilder {
         }
     }
 
-    public static long minimum(long... values)
-    {
+    public static long minimum(long... values) {
         int len = values.length;
         long current = values[0];
 
-        for (int i=1; i < len; i++)
-        {
+        for (int i = 1; i < len; i++) {
             current = Math.min(values[i], current);
         }
 
         return current;
     }
 
-    public static int damerauLevenshteinDistance(CharSequence source, CharSequence target)
-    {
-        if (source == null || "".equals(source))
-        {
+    public static int damerauLevenshteinDistance(CharSequence source, CharSequence target) {
+        if (source == null || "".equals(source)) {
             return target == null || "".equals(target) ? 0 : target.length();
-        }
-        else if (target == null || "".equals(target))
-        {
+        } else if (target == null || "".equals(target)) {
             return source.length();
         }
 
@@ -476,25 +461,21 @@ public class SuggestionsBuilder {
         // We need indexers from 0 to the length of the source string.
         // This sequential set of numbers will be the row "headers"
         // in the matrix.
-        for (int srcIndex = 0; srcIndex <= srcLen; srcIndex++)
-        {
+        for (int srcIndex = 0; srcIndex <= srcLen; srcIndex++) {
             distanceMatrix[srcIndex][0] = srcIndex;
         }
 
         // We need indexers from 0 to the length of the target string.
         // This sequential set of numbers will be the
         // column "headers" in the matrix.
-        for (int targetIndex = 0; targetIndex <= targetLen; targetIndex++)
-        {
+        for (int targetIndex = 0; targetIndex <= targetLen; targetIndex++) {
             // Set the value of the first cell in the column
             // equivalent to the current value of the iterator
             distanceMatrix[0][targetIndex] = targetIndex;
         }
 
-        for (int srcIndex = 1; srcIndex <= srcLen; srcIndex++)
-        {
-            for (int targetIndex = 1; targetIndex <= targetLen; targetIndex++)
-            {
+        for (int srcIndex = 1; srcIndex <= srcLen; srcIndex++) {
+            for (int targetIndex = 1; targetIndex <= targetLen; targetIndex++) {
                 // If the current characters in both strings are equal
                 int cost = source.charAt(srcIndex - 1) == target.charAt(targetIndex - 1) ? 0 : 1;
 
@@ -513,15 +494,13 @@ public class SuggestionsBuilder {
                 // We don't want to do the next series of calculations on
                 // the first pass because we would get an index out of bounds
                 // exception.
-                if (srcIndex == 1 || targetIndex == 1)
-                {
+                if (srcIndex == 1 || targetIndex == 1) {
                     continue;
                 }
 
                 // transposition check (if the current and previous
                 // character are switched around (e.g.: t[se]t and t[es]t)...
-                if (source.charAt(srcIndex - 1) == target.charAt(targetIndex - 2) && source.charAt(srcIndex - 2) == target.charAt(targetIndex - 1))
-                {
+                if (source.charAt(srcIndex - 1) == target.charAt(targetIndex - 2) && source.charAt(srcIndex - 2) == target.charAt(targetIndex - 1)) {
                     // What's the minimum cost between the current distance
                     // and a transposition.
                     distanceMatrix[srcIndex][targetIndex] = (int) minimum(
@@ -654,7 +633,7 @@ public class SuggestionsBuilder {
             return null;
         }
 
-        return suggestionSet(suggestionMap);
+        return suggestionSet(inputWord, suggestionMap);
     }
 
     private CandidateStats[] buildAllCandidateStats(String inputWord, SearchResponse searchResponse, int hitsCount) {
@@ -670,7 +649,7 @@ public class SuggestionsBuilder {
         return candidateStats;
     }
 
-    private SortedSet<Suggestion> suggestionSet(Map<String, Suggestion> suggestionMap) {
+    private SortedSet<Suggestion> suggestionSet(String word, Map<String, Suggestion> suggestionMap) {
         // todo: do this restriction only on a flag = strict, but for now we are doing for all
         boolean hasExactMatch = false;
         boolean hasEdgeGramMatch = false;
@@ -686,12 +665,24 @@ public class SuggestionsBuilder {
         }
 
         SortedSet<Suggestion> suggestions = new TreeSet<>();
+
+        boolean hasSynonyms = false;
+        String[] synonymList = synonyms.get(word);
+        if (synonymList != null) {
+
+            for (String synonym : synonymList) {
+                // TODO: have special type to capture synonyms
+                suggestions.add(new Suggestion(Suggestion.TokenType.Uni, synonym, synonym, synonym, MatchLevel.Synonym, 0, 0, 0, 0, 0, 0, 0));
+                hasSynonyms = true;
+            }
+        }
+
         for (Suggestion suggestion : suggestionMap.values()) {
             if ((hasExactMatch || hasEdgeGramMatch) && suggestion.getMatchLevel().getLevel() > MatchLevel.EdgeGram.getLevel()) {
                 continue;
             }
 
-            if (hasPhoneticMatch && suggestion.getMatchLevel().getLevel() > MatchLevel.Phonetic.getLevel()) {
+            if (hasSynonyms || hasPhoneticMatch && suggestion.getMatchLevel().getLevel() > MatchLevel.Phonetic.getLevel()) {
                 continue;
             }
 
@@ -703,18 +694,6 @@ public class SuggestionsBuilder {
                 if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
                     suggestion.setIgnore(true);
                 }
-            }
-        }
-
-        for (String key : suggestionMap.keySet()) {
-            String[] synonymList = synonyms.get(key);
-            if (synonymList == null) {
-                continue;
-            }
-
-            for (String synonym : synonymList) {
-                // TODO: have special type to capture synonyms
-                suggestions.add(new Suggestion(Suggestion.TokenType.Uni, synonym, synonym, synonym, MatchLevel.Synonym, 0, 0, 0, 0, 0, 0, 0));
             }
         }
 

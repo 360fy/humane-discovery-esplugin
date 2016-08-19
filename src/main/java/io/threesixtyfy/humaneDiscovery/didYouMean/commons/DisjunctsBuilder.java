@@ -33,6 +33,27 @@ public class DisjunctsBuilder {
                 tokens.forEach(conjunctBuilder::add);
 
                 disjuncts.add(Disjunct.builder().add(conjunctBuilder.build(uniqueConjuncts)).build());
+
+                // if any of the token is stop word, then we build another disjunct ignoring that token
+                boolean stopWord = false;
+                for (String token : tokens) {
+                    if (StopWords.contains(token)) {
+                        stopWord = true;
+                        break;
+                    }
+                }
+
+                if (stopWord) {
+                    conjunctBuilder = Conjunct.builder();
+
+                    for (String token : tokens) {
+                        if (!StopWords.contains(token)) {
+                            conjunctBuilder.add(token);
+                        }
+                    }
+
+                    disjuncts.add(Disjunct.builder().add(conjunctBuilder.build(uniqueConjuncts)).build());
+                }
             }
 
             Disjunct[] suffixDisjuncts = build(tokens.subList(1, size), uniqueConjuncts);
