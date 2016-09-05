@@ -33,8 +33,6 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
     public static final String MULTI_HUMANE_QUERY = "multi_humane_query";
     public static final String MultiHumaneQuery = "multiHumaneQuery";
 
-    private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
-
     private final Client client;
 
     @Inject
@@ -144,7 +142,7 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
             throw new QueryParsingException(parseContext, "For single field query use [humane_query] instead");
         }
 
-        Query query = humaneQuery.parse(this.client, suggestionsBuilder, queryFields.toArray(new QueryField[queryFields.size()]), queryText);
+        Query query = humaneQuery.parse(this.client, queryFields.toArray(new QueryField[queryFields.size()]), queryText);
         if (query == null) {
             return Queries.newMatchNoDocsQuery();
         }

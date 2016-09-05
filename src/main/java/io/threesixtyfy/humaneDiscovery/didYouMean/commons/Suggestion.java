@@ -10,32 +10,19 @@ public class Suggestion implements Comparable<Suggestion> {
     private final String suggestion;
     private final String match;
     private final String display;
-    private final MatchLevel matchLevel;
-    private final int editDistance;
-    private final int similarity;
     private final double weight;
     private final int count;
 
-    private final double jwDistance;
-    private final double lDistance;
-
-    private final float score;
+    private final MatchStats matchStats;
 
     private boolean ignore = false;
 
-    public Suggestion(TokenType tokenType, String suggestion, String match, String display, MatchLevel matchLevel, int editDistance, int similarity, double jwDistance, double lDistance, float score, double weight, int count) {
+    public Suggestion(TokenType tokenType, String suggestion, String match, String display, MatchStats matchStats, double weight, int count) {
         this.tokenType = tokenType;
         this.suggestion = suggestion;
         this.match = match;
         this.display = display;
-        this.matchLevel = matchLevel;
-        this.editDistance = editDistance;
-        this.similarity = similarity;
-
-        this.jwDistance = jwDistance;
-        this.lDistance = lDistance;
-
-        this.score = score;
+        this.matchStats = matchStats;
         this.weight = weight;
         this.count = count;
     }
@@ -56,28 +43,8 @@ public class Suggestion implements Comparable<Suggestion> {
         return display;
     }
 
-    public MatchLevel getMatchLevel() {
-        return matchLevel;
-    }
-
-    public int getEditDistance() {
-        return editDistance;
-    }
-
-    public int getSimilarity() {
-        return similarity;
-    }
-
-    public double getJwDistance() {
-        return jwDistance;
-    }
-
-    public double getlDistance() {
-        return lDistance;
-    }
-
-    public float getScore() {
-        return score;
+    public MatchStats getMatchStats() {
+        return matchStats;
     }
 
     public double getWeight() {
@@ -118,24 +85,7 @@ public class Suggestion implements Comparable<Suggestion> {
 
     @Override
     public int compareTo(Suggestion o) {
-        int ret = this.matchLevel.level - o.matchLevel.level;
-
-        // lower edit distance comes first
-        if (ret == 0) {
-            ret = Integer.compare(editDistance, o.editDistance);
-        }
-
-        if (ret == 0) {
-            ret = Double.compare(o.lDistance, lDistance);
-        }
-
-        if (ret == 0) {
-            ret = Double.compare(o.jwDistance, jwDistance);
-        }
-
-        if (ret == 0) {
-            ret = Integer.compare(o.similarity, this.similarity);
-        }
+        int ret = this.matchStats.compareTo(o.matchStats);
 
         if (ret == 0) {
             ret = Double.compare(o.weight / Math.max(1, o.count), weight / Math.max(1, count));
@@ -167,21 +117,18 @@ public class Suggestion implements Comparable<Suggestion> {
                 ", suggestion='" + suggestion + '\'' +
                 ", match='" + match + '\'' +
                 ", display='" + display + '\'' +
-                ", matchLevel=" + matchLevel +
-                ", editDistance=" + editDistance +
-                ", similarity=" + similarity +
+                ", matchStats=" + matchStats +
                 ", weight=" + weight +
                 ", count=" + count +
-                ", jwDistance=" + jwDistance +
-                ", lDistance=" + lDistance +
-                ", score=" + score +
                 ", ignore=" + ignore +
                 '}';
     }
 
     public enum TokenType {
         Uni(0),
-        Bi(1);
+        Bi(1),
+        ShingleUni(2),
+        ShingleBi(3);
 
         final int level;
 
@@ -191,6 +138,84 @@ public class Suggestion implements Comparable<Suggestion> {
 
         public int getLevel() {
             return level;
+        }
+    }
+
+    public static class MatchStats implements Comparable<MatchStats> {
+        MatchLevel matchLevel;
+        int editDistance;
+        int similarity;
+        double jwDistance;
+        double lDistance;
+        float score;
+
+        public MatchStats(MatchLevel matchLevel, int editDistance, int similarity, double jwDistance, double lDistance, float score) {
+            this.matchLevel = matchLevel;
+            this.editDistance = editDistance;
+            this.similarity = similarity;
+            this.jwDistance = jwDistance;
+            this.lDistance = lDistance;
+            this.score = score;
+        }
+
+        public MatchLevel getMatchLevel() {
+            return matchLevel;
+        }
+
+        public int getEditDistance() {
+            return editDistance;
+        }
+
+        public int getSimilarity() {
+            return similarity;
+        }
+
+        public double getJwDistance() {
+            return jwDistance;
+        }
+
+        public double getlDistance() {
+            return lDistance;
+        }
+
+        public float getScore() {
+            return score;
+        }
+
+        @Override
+        public String toString() {
+            return "{" +
+                    "matchLevel=" + matchLevel +
+                    ", editDistance=" + editDistance +
+                    ", similarity=" + similarity +
+                    ", jwDistance=" + jwDistance +
+                    ", lDistance=" + lDistance +
+                    ", score=" + score +
+                    '}';
+        }
+
+        @Override
+        public int compareTo(MatchStats o) {
+            int ret = this.matchLevel.level - o.matchLevel.level;
+
+            // lower edit distance comes first
+            if (ret == 0) {
+                ret = Integer.compare(this.editDistance, o.editDistance);
+            }
+
+            if (ret == 0) {
+                ret = Double.compare(o.lDistance, this.lDistance);
+            }
+
+            if (ret == 0) {
+                ret = Double.compare(o.jwDistance, this.jwDistance);
+            }
+
+            if (ret == 0) {
+                ret = Integer.compare(o.similarity, this.similarity);
+            }
+
+            return ret;
         }
     }
 }

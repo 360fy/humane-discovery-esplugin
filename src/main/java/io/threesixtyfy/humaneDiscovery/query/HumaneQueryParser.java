@@ -1,7 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
-import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.inject.Inject;
@@ -28,8 +26,6 @@ public class HumaneQueryParser implements QueryParser {
 
     public static final String HUMANE_QUERY = "humane_query";
     public static final String HumaneQuery = "humaneQuery";
-
-    private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
 
     private final Client client;
 
@@ -103,7 +99,7 @@ public class HumaneQueryParser implements QueryParser {
             throw new QueryParsingException(parseContext, "No text specified for query");
         }
 
-        Query query = humaneQuery.parse(this.client, suggestionsBuilder, queryField, queryText);
+        Query query = humaneQuery.parse(this.client, queryField, queryText);
         if (query == null) {
             return Queries.newMatchNoDocsQuery();
         }

@@ -326,9 +326,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
         newPollerThread();
 
-        this.clusterService.add(event -> {
-            isMaster = event.localNodeMaster();
-        });
+        this.clusterService.add(event -> isMaster = event.localNodeMaster());
 
         this.indicesService.indicesLifecycle().addListener(indicesLifecycleListener);
     }
@@ -348,7 +346,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     private void consumeAggregates(boolean force) {
         // if 10K words have been accumulated
         int count = aggregatedWordsCount.get();
-        if (count >= 10000 || ((force || stopPoller.get()) && count > 0)) {
+        if (count >= 100000 || ((force || stopPoller.get()) && count > 0)) {
             logger.info("submitting aggregates to bulk processor: {}", count);
             // create index requests
             for (Map.Entry<String, WordAggregateInfo> entry : wordsAggregateInfo.entrySet()) {
@@ -375,17 +373,18 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         }
     }
 
-    private void subAggregateWordInfo(Map<String, SubAggregateInfo> subAggregatesInfo, String field, double weight, boolean edgeGram) {
-        if (!subAggregatesInfo.containsKey(field)) {
-            subAggregatesInfo.put(field, new SubAggregateInfo(field, weight, 1, edgeGram ? 0 : 1, edgeGram ? 1 : 0));
+    private void wordFieldAggregateInfo(Map<String, FieldAggregateInfo> subAggregatesInfo, String type, String field, double weight, boolean edgeGram) {
+        String key = type + "/" + field;
+        if (!subAggregatesInfo.containsKey(key)) {
+            subAggregatesInfo.put(key, new FieldAggregateInfo(type, field, weight, 1, edgeGram ? 0 : 1, edgeGram ? 1 : 0));
         } else {
-            SubAggregateInfo subAggregateInfo = subAggregatesInfo.get(field);
-            subAggregateInfo.totalWeight += weight;
-            subAggregateInfo.totalCount++;
+            FieldAggregateInfo fieldAggregateInfo = subAggregatesInfo.get(key);
+            fieldAggregateInfo.totalWeight += weight;
+            fieldAggregateInfo.totalCount++;
             if (edgeGram) {
-                subAggregateInfo.countAsEdgeGram++;
+                fieldAggregateInfo.countAsEdgeGram++;
             } else {
-                subAggregateInfo.countAsFullWord++;
+                fieldAggregateInfo.countAsFullWord++;
             }
         }
     }
@@ -496,26 +495,29 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     wordAggregateInfo.countAsFullWord++;
                 }
 
+                String type = wordInfo.typeName;
+                String field = wordInfo.fieldName;
+
                 String originalWord = wordInfo.originalWord;
                 if (originalWord != null) {
+                    OriginalWordInfo originalWordInfo = null;
                     if (wordAggregateInfo.originalWords.containsKey(originalWord)) {
-                        OriginalWordInfo originalWordInfo = wordAggregateInfo.originalWords.get(originalWord);
+                        originalWordInfo = wordAggregateInfo.originalWords.get(originalWord);
                         originalWordInfo.totalCount++;
                         originalWordInfo.totalWeight += wordInfo.suggestionWeight;
                     } else {
-                        wordAggregateInfo.originalWords.put(originalWord, new OriginalWordInfo(originalWord, wordInfo.originalDisplay, wordInfo.suggestionWeight, 1));
+                        originalWordInfo = new OriginalWordInfo(originalWord, wordInfo.originalDisplay, wordInfo.suggestionWeight, 1);
+                        wordAggregateInfo.originalWords.put(originalWord, originalWordInfo);
                     }
+
+                    wordFieldAggregateInfo(originalWordInfo.fieldAggregateInfo, type, field, wordInfo.suggestionWeight, edgeGram);
                 }
 
-                String type = wordInfo.typeName;
+//                // aggregate by type
+//                wordFieldAggregateInfo(wordAggregateInfo.typeAggregateInfo, type, wordInfo.suggestionWeight, edgeGram);
 
-                // aggregate by type
-                subAggregateWordInfo(wordAggregateInfo.typeAggregateInfo, type, wordInfo.suggestionWeight, edgeGram);
-
-                String field = type + ":" + wordInfo.field;
-
-                // aggregate by field
-                subAggregateWordInfo(wordAggregateInfo.fieldAggregateInfo, field, wordInfo.suggestionWeight, edgeGram);
+                // aggregate by fieldName
+                wordFieldAggregateInfo(wordAggregateInfo.fieldAggregateInfo, type, field, wordInfo.suggestionWeight, edgeGram);
                 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             }
         });
@@ -615,18 +617,18 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("encodings").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // weight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalWeight").field("type", "double")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalCount").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
-                    // field stats start
+                    // fieldName stats start
                     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
                     .startObject("fieldStats")
 
@@ -634,73 +636,79 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
                     .startObject("properties")
 
-                    // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
+//                    // name
+//                    .startObject("name").fieldName("type", "string").fieldName("index", "not_analyzed").fieldName("store", "no").endObject()
+
+                    // fieldName
+                    .startObject("fieldName").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
+
+                    // typeName
+                    .startObject("typeName").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalWeight").field("type", "double")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalCount").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
-                    // type stats start
-                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                    .startObject("typeStats")
+//                    // type stats start
+//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//                    .startObject("typeStats")
+//
+//                    .fieldName("type", "nested")
+//
+//                    .startObject("properties")
+//
+//                    // name
+//                    .startObject("name").fieldName("type", "string").fieldName("index", "not_analyzed").fieldName("store", "no").endObject()
+//
+//                    // totalWeight
+//                    .startObject("totalWeight").fieldName("type", "double").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalCount
+//                    .startObject("totalCount").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // countAsFullWord
+//                    .startObject("countAsFullWord").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // countAsEdgeGram
+//                    .startObject("countAsEdgeGram").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    .endObject().endObject()
+//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-                    .field("type", "nested")
-
-                    .startObject("properties")
-
-                    // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
-
-                    // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
-
-                    // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    .endObject().endObject()
-                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-                    // original word stats start
-                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                    .startObject("originalWords")
-
-                    .field("type", "nested")
-
-                    .startObject("properties")
-
-                    // word
-                    .startObject("word").field("type", "string").field("index", "no").field("store", "no").endObject()
-
-                    // display
-                    .startObject("display").field("type", "string").field("index", "no").field("store", "no").endObject()
-
-                    // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
-
-                    // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    .endObject().endObject()
-                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+//                    // original word stats start
+//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//                    .startObject("originalWords")
+//
+//                    .fieldName("type", "nested")
+//
+//                    .startObject("properties")
+//
+//                    // word
+//                    .startObject("word").fieldName("type", "string").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // display
+//                    .startObject("display").fieldName("type", "string").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalWeight
+//                    .startObject("totalWeight").fieldName("type", "double").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalCount
+//                    .startObject("totalCount").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    .endObject().endObject()
+//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
                     .endObject().endObject().endObject()
 
@@ -737,18 +745,18 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     .startObject("word2Encodings").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // weight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalWeight").field("type", "double")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalCount").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
-                    // field stats start
+                    // fieldName stats start
                     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
                     .startObject("fieldStats")
 
@@ -756,73 +764,100 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
                     .startObject("properties")
 
-                    // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
+//                    // name
+//                    .startObject("name").fieldName("type", "string").fieldName("index", "not_analyzed").fieldName("store", "no").endObject()
+
+                    // fieldName
+                    .startObject("fieldName").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
+
+                    // typeName
+                    .startObject("typeName").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
 
                     // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalWeight").field("type", "double")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("totalCount").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsFullWord").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
+                    .startObject("countAsEdgeGram").field("type", "long")./*fieldName("index", "no").*/field("store", "no").endObject()
 
                     .endObject().endObject()
                     // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
-                    // type stats start
-                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                    .startObject("typeStats")
+//                    // type stats start
+//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//                    .startObject("typeStats")
+//
+//                    .fieldName("type", "nested")
+//
+//                    .startObject("properties")
+//
+//                    // name
+//                    .startObject("name").fieldName("type", "string").fieldName("index", "not_analyzed").fieldName("store", "no").endObject()
+//
+//                    // totalWeight
+//                    .startObject("totalWeight").fieldName("type", "double").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalCount
+//                    .startObject("totalCount").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // countAsFullWord
+//                    .startObject("countAsFullWord").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // countAsEdgeGram
+//                    .startObject("countAsEdgeGram").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    .endObject().endObject()
+//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-                    .field("type", "nested")
-
-                    .startObject("properties")
-
-                    // name
-                    .startObject("name").field("type", "string").field("index", "not_analyzed").field("store", "no").endObject()
-
-                    // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
-
-                    // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    // countAsFullWord
-                    .startObject("countAsFullWord").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    // countAsEdgeGram
-                    .startObject("countAsEdgeGram").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    .endObject().endObject()
-                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-                    // original word stats start
-                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                    .startObject("originalWords")
-
-                    .field("type", "nested")
-
-                    .startObject("properties")
-
-                    // name
-                    .startObject("word").field("type", "string").field("index", "no").field("store", "no").endObject()
-
-                    // display
-                    .startObject("display").field("type", "string").field("index", "no").field("store", "no").endObject()
-
-                    // totalWeight
-                    .startObject("totalWeight").field("type", "double").field("index", "no").field("store", "no").endObject()
-
-                    // totalCount
-                    .startObject("totalCount").field("type", "long").field("index", "no").field("store", "no").endObject()
-
-                    .endObject().endObject()
-                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+//                    // original word stats start
+//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//                    .startObject("originalWords")
+//
+//                    .fieldName("type", "nested")
+//
+//                    .startObject("properties")
+//
+//                    // name
+//                    .startObject("word").fieldName("type", "string").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // display
+//                    .startObject("display").fieldName("type", "string").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalWeight
+//                    .startObject("totalWeight").fieldName("type", "double").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalCount
+//                    .startObject("totalCount").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // >>>>>> fieldName stats start
+//                    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//                    .startObject("fieldStats")
+//
+//                    .startObject("properties")
+//
+//                    // fieldName
+//                    .startObject("fieldName").fieldName("type", "string").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // typeName
+//                    .startObject("typeName").fieldName("type", "string").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalWeight
+//                    .startObject("totalWeight").fieldName("type", "double").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    // totalCount
+//                    .startObject("totalCount").fieldName("type", "long").fieldName("index", "no").fieldName("store", "no").endObject()
+//
+//                    .endObject().endObject()
+//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+//
+//                    .endObject().endObject()
+//                    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
                     .endObject().endObject().endObject()
 
@@ -851,7 +886,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             TokenStream tokenStream = null;
             for (ParseContext.Document document : parsedDocument.docs()) {
                 for (IndexableField field : document.getFields()) {
-//                    logger.info("Parsing field: {}, type: {}", field.name(), field.fieldType().getClass());
+//                    logger.info("Parsing fieldName: {}, type: {}", fieldName.name(), fieldName.fieldType().getClass());
                     IndexableFieldType fieldType = field.fieldType();
 
                     double suggestionWeight;
@@ -864,7 +899,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                         continue;
                     }
 
-//                    logger.info("Considering field: {}, weight: {}, class: {}", field.name(), suggestionWeight, fieldType.getClass());
+//                    logger.info("Considering fieldName: {}, weight: {}, class: {}", fieldName.name(), suggestionWeight, fieldType.getClass());
 
                     tokenStream = field.tokenStream(this.humaneAnalyzer, tokenStream);
 
@@ -881,22 +916,22 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
 //                            logger.info("Adding word {} for type: {}, index: {}", word, parsedDocument.type(), this.indexName);
 
-                            wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), word, fieldName, suggestionWeight, false, word));
+                            wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), fieldName, word, suggestionWeight, false, word));
                             queuedWordCount.addAndGet(1);
 
                             if (StringUtils.isNotEmpty(previousWord)) {
-                                wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, word, fieldName, suggestionWeight, false, previousWord + word, previousWord + " " + word));
+                                wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), fieldName, previousWord, word, suggestionWeight, false, previousWord + word, previousWord + " " + word));
                                 queuedWordCount.addAndGet(1);
                             }
 
                             for (String edgeGram : edgeGramEncodingUtils.buildEncodings(word)) {
                                 if (fieldType instanceof HumaneTextFieldMapper.HumaneTextFieldType || edgeGram.length() > 1) {
-                                    wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), edgeGram, fieldName, suggestionWeight, true, word));
+                                    wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), fieldName, edgeGram, suggestionWeight, true, word));
                                     queuedWordCount.addAndGet(1);
                                 }
 
                                 if (StringUtils.isNotEmpty(previousWord)) {
-                                    wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), previousWord, edgeGram, fieldName, suggestionWeight, true, previousWord + word, previousWord + " " + word));
+                                    wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), fieldName, previousWord, edgeGram, suggestionWeight, true, previousWord + word, previousWord + " " + word));
                                     queuedWordCount.addAndGet(1);
                                 }
                             }
@@ -945,24 +980,24 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     static class WordInfo {
         String indexName;
         String typeName;
+        String fieldName;
 
         String word;
-        String field;
         boolean edgeGram;
         String originalWord;
         String originalDisplay;
 
         double suggestionWeight = 1.0f;
 
-        public WordInfo(String indexName, String typeName, String word, String field, double suggestionWeight, boolean edgeGram, String originalWord) {
-            this(indexName, typeName, word, field, suggestionWeight, edgeGram, originalWord, null);
+        public WordInfo(String indexName, String typeName, String fieldName, String word, double suggestionWeight, boolean edgeGram, String originalWord) {
+            this(indexName, typeName, fieldName, word, suggestionWeight, edgeGram, originalWord, null);
         }
 
-        public WordInfo(String indexName, String typeName, String word, String field, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
+        public WordInfo(String indexName, String typeName, String fieldName, String word, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
             this.indexName = indexName;
             this.typeName = typeName;
+            this.fieldName = fieldName;
             this.word = word;
-            this.field = field;
             this.suggestionWeight = suggestionWeight;
             this.edgeGram = edgeGram;
             this.originalWord = originalWord;
@@ -974,8 +1009,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             return "{" +
                     "indexName='" + indexName + '\'' +
                     ", typeName='" + typeName + '\'' +
+                    ", fieldName='" + fieldName + '\'' +
                     ", word='" + word + '\'' +
-                    ", field='" + field + '\'' +
                     ", edgeGram=" + edgeGram +
                     ", originalWord='" + originalWord + '\'' +
                     ", originalDisplay='" + originalDisplay + '\'' +
@@ -988,8 +1023,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         String word1;
         String word2;
 
-        public BigramWordInfo(String indexName, String typeName, String word1, String word2, String field, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
-            super(indexName, typeName, word1 + word2, field, suggestionWeight, edgeGram, originalWord, originalDisplay);
+        public BigramWordInfo(String indexName, String typeName, String field, String word1, String word2, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
+            super(indexName, typeName, field, word1 + word2, suggestionWeight, edgeGram, originalWord, originalDisplay);
 
             this.word1 = word1;
             this.word2 = word2;
@@ -1016,9 +1051,9 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
         final Set<String> encodings = new HashSet<>();
 
-        final Map<String, SubAggregateInfo> typeAggregateInfo = new HashMap<>();
+//        final Map<String, FieldAggregateInfo> typeAggregateInfo = new HashMap<>();
 
-        final Map<String, SubAggregateInfo> fieldAggregateInfo = new HashMap<>();
+        final Map<String, FieldAggregateInfo> fieldAggregateInfo = new HashMap<>();
 
         final Map<String, OriginalWordInfo> originalWords = new HashMap<>();
 
@@ -1031,19 +1066,28 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             Map<String, Object> map = new HashMap<>();
 
             map.put("word", word);
-            map.put("totalCount", totalCount);
-            map.put("totalWeight", totalWeight);
-            map.put("countAsFullWord", countAsFullWord);
-            map.put("countAsEdgeGram", countAsEdgeGram);
-            map.put("encodings", encodings);
-            map.put("typeStats", typeAggregateInfo.values().stream().map(SubAggregateInfo::map).collect(Collectors.toList()));
-            map.put("fieldStats", fieldAggregateInfo.values().stream().map(SubAggregateInfo::map).collect(Collectors.toList()));
 
-            List<Map<String, Object>> originalWordList = new LinkedList<>();
-
-            for (OriginalWordInfo originalWordInfo : originalWords.values()) {
-                originalWordList.add(originalWordInfo.map());
+            if (totalWeight > 0) {
+                map.put("totalWeight", totalWeight);
             }
+
+            if (totalCount > 0) {
+                map.put("totalCount", totalCount);
+            }
+
+            if (countAsFullWord > 0) {
+                map.put("countAsFullWord", countAsFullWord);
+            }
+
+            if (countAsEdgeGram > 0) {
+                map.put("countAsEdgeGram", countAsEdgeGram);
+            }
+
+            map.put("encodings", encodings);
+//            map.put("typeStats", typeAggregateInfo.values().stream().map(FieldAggregateInfo::map).collect(Collectors.toList()));
+            map.put("fieldStats", fieldAggregateInfo.values().stream().map(FieldAggregateInfo::map).collect(Collectors.toList()));
+
+            List<Map<String, Object>> originalWordList = originalWords.values().stream().map(OriginalWordInfo::map).collect(Collectors.toCollection(LinkedList::new));
 
             map.put("originalWords", originalWordList);
 
@@ -1054,17 +1098,27 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         protected static WordAggregateInfo unmap(WordAggregateInfo wordAggregateInfo, Map<String, Object> map) {
             wordAggregateInfo.totalCount = (int) map.get("totalCount");
             wordAggregateInfo.totalWeight = (double) map.get("totalWeight");
-            wordAggregateInfo.countAsFullWord = (int) map.get("countAsFullWord");
-            wordAggregateInfo.countAsEdgeGram = (int) map.get("countAsEdgeGram");
 
-            List<Map<String, Object>> typeStats = (List<Map<String, Object>>) map.get("typeStats");
-            for (Map<String, Object> stat : typeStats) {
-                wordAggregateInfo.typeAggregateInfo.put((String) stat.get("name"), SubAggregateInfo.unmap(stat));
+            if (map.containsKey("countAsFullWord")) {
+                wordAggregateInfo.countAsFullWord = (int) map.get("countAsFullWord");
+            } else {
+                wordAggregateInfo.countAsFullWord = 0;
             }
+
+            if (map.containsKey("countAsEdgeGram")) {
+                wordAggregateInfo.countAsEdgeGram = (int) map.get("countAsEdgeGram");
+            } else {
+                wordAggregateInfo.countAsEdgeGram = 0;
+            }
+
+//            List<Map<String, Object>> typeStats = (List<Map<String, Object>>) map.get("typeStats");
+//            for (Map<String, Object> stat : typeStats) {
+//                wordAggregateInfo.typeAggregateInfo.put((String) stat.get("name"), FieldAggregateInfo.unmap(stat));
+//            }
 
             List<Map<String, Object>> fieldStats = (List<Map<String, Object>>) map.get("fieldStats");
             for (Map<String, Object> stat : fieldStats) {
-                wordAggregateInfo.fieldAggregateInfo.put((String) stat.get("name"), SubAggregateInfo.unmap(stat));
+                wordAggregateInfo.fieldAggregateInfo.put((String) stat.get("name"), FieldAggregateInfo.unmap(stat));
             }
 
             List<Map<String, Object>> originalWordList = (List<Map<String, Object>>) map.get("originalWords");
@@ -1093,7 +1147,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     ", countAsEdgeGram=" + countAsEdgeGram +
                     ", totalWeight=" + totalWeight +
                     ", encodings=" + encodings +
-                    ", typeAggregateInfo=" + typeAggregateInfo +
+//                    ", typeAggregateInfo=" + typeAggregateInfo +
                     ", fieldAggregateInfo=" + fieldAggregateInfo +
                     ", originalWords=" + originalWords +
                     '}';
@@ -1146,15 +1200,17 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         }
     }
 
-    static class SubAggregateInfo {
-        String name;
+    static class FieldAggregateInfo {
+        String typeName;
+        String fieldName;
         double totalWeight;
         int totalCount;
         int countAsFullWord;
         int countAsEdgeGram;
 
-        public SubAggregateInfo(String name, double totalWeight, int totalCount, int countAsFullWord, int countAsEdgeGram) {
-            this.name = name;
+        public FieldAggregateInfo(String typeName, String fieldName, double totalWeight, int totalCount, int countAsFullWord, int countAsEdgeGram) {
+            this.typeName = typeName;
+            this.fieldName = fieldName;
             this.totalWeight = totalWeight;
             this.totalCount = totalCount;
             this.countAsFullWord = countAsFullWord;
@@ -1164,23 +1220,52 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         public Map<String, Object> map() {
             Map<String, Object> map = new HashMap<>();
 
-            map.put("name", name);
-            map.put("totalWeight", totalWeight);
-            map.put("totalCount", totalCount);
-            map.put("countAsFullWord", countAsFullWord);
-            map.put("countAsEdgeGram", countAsEdgeGram);
+            map.put("typeName", typeName);
+            map.put("fieldName", fieldName);
+
+            if (totalWeight > 0) {
+                map.put("totalWeight", totalWeight);
+            }
+
+            if (totalCount > 0) {
+                map.put("totalCount", totalCount);
+            }
+
+            if (countAsFullWord > 0) {
+                map.put("countAsFullWord", countAsFullWord);
+            }
+
+            if (countAsEdgeGram > 0) {
+                map.put("countAsEdgeGram", countAsEdgeGram);
+            }
 
             return map;
         }
 
-        public static SubAggregateInfo unmap(Map<String, Object> map) {
-            return new SubAggregateInfo((String) map.get("name"), (double) map.get("totalWeight"), (int) map.get("totalCount"), (int) map.get("countAsFullWord"), (int) map.get("countAsEdgeGram"));
+        public static FieldAggregateInfo unmap(Map<String, Object> map) {
+            int countAsFullWord = 0;
+            if (map.containsKey("countAsFullWord")) {
+                countAsFullWord = (int) map.get("countAsFullWord");
+            }
+
+            int countAsEdgeGram = 0;
+            if (map.containsKey("countAsEdgeGram")) {
+                countAsEdgeGram = (int) map.get("countAsEdgeGram");
+            }
+
+            return new FieldAggregateInfo((String) map.get("typeName"),
+                    (String) map.get("fieldName"),
+                    (double) map.get("totalWeight"),
+                    (int) map.get("totalCount"),
+                    countAsFullWord,
+                    countAsEdgeGram);
         }
 
         @Override
         public String toString() {
             return "{" +
-                    "name='" + name + '\'' +
+                    "typeName='" + typeName + '\'' +
+                    ", fieldName='" + fieldName + '\'' +
                     ", totalWeight=" + totalWeight +
                     ", totalCount=" + totalCount +
                     ", countAsFullWord=" + countAsFullWord +
@@ -1194,6 +1279,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         String display;
         double totalWeight;
         int totalCount;
+
+        final Map<String, FieldAggregateInfo> fieldAggregateInfo = new HashMap<>();
 
         public OriginalWordInfo(String word, String display, double totalWeight, int totalCount) {
             this.word = word;
@@ -1210,11 +1297,21 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
             map.put("totalWeight", totalWeight);
             map.put("totalCount", totalCount);
 
+            map.put("fieldStats", fieldAggregateInfo.values().stream().map(FieldAggregateInfo::map).collect(Collectors.toList()));
+
             return map;
         }
 
+        @SuppressWarnings("unchecked")
         public static OriginalWordInfo unmap(Map<String, Object> map) {
-            return new OriginalWordInfo((String) map.get("word"), (String) map.get("display"), (double) map.get("totalWeight"), (int) map.get("totalCount"));
+            OriginalWordInfo originalWordInfo = new OriginalWordInfo((String) map.get("word"), (String) map.get("display"), (double) map.get("totalWeight"), (int) map.get("totalCount"));
+
+            List<Map<String, Object>> fieldStats = (List<Map<String, Object>>) map.get("fieldStats");
+            for (Map<String, Object> stat : fieldStats) {
+                originalWordInfo.fieldAggregateInfo.put((String) stat.get("name"), FieldAggregateInfo.unmap(stat));
+            }
+
+            return originalWordInfo;
         }
 
         @Override

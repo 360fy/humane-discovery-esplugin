@@ -42,7 +42,7 @@ public class PhoneticEncodingUtils {
         int minGram = getMin(wordLength);
         int maxGram = getMax(wordLength);
 
-        for (int ng = minGram; ng <= maxGram; ng++) {
+        for (int ng = 1; ng <= maxGram; ng++) {
             String end = null;
             for (int i = 0; i < wordLength - ng + 1; i++) {
                 String gram = word.substring(i, i + ng);
@@ -51,9 +51,13 @@ public class PhoneticEncodingUtils {
                     encodings.add(GRAM_START_PREFIX + gram);
                 }
 
-                encodings.add(GRAM_PREFIX + gram);
+                if (ng >= minGram) {
+                    encodings.add(GRAM_PREFIX + gram);
+                }
+
                 end = gram;
             }
+
             if (end != null) { // may not be present if len==ng1
                 encodings.add(GRAM_END_PREFIX + end);
             }

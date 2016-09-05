@@ -16,4 +16,14 @@ public enum MatchLevel {
     public int getLevel() {
         return level;
     }
+
+    public static MatchLevel byLevel(int level) {
+        for (MatchLevel matchLevel : MatchLevel.values()) {
+            if (matchLevel.getLevel() == level) {
+                return matchLevel;
+            }
+        }
+
+        return null;
+    }
 }

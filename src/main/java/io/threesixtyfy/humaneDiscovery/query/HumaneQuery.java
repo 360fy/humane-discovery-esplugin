@@ -3,10 +3,12 @@ package io.threesixtyfy.humaneDiscovery.query;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.IntentBuilder;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionSet;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.TokensBuilder;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.search.BooleanClause;
@@ -59,7 +61,7 @@ public class HumaneQuery extends Query {
     public static final String HUMANE_FIELD_SUFFIX = ".humane";
     public static final String SEARCH_QUERY_STORE_PREFIX = ":search_query_store";
     public static final String SEARCH_QUERY_STORE_SUFFIX = SEARCH_QUERY_STORE_PREFIX;
-//    public static final float BOOST_NORMALIZE_FACTOR = 10.0f;
+    //    public static final float BOOST_NORMALIZE_FACTOR = 10.0f;
     public static final float EDIT_DISTANCE_NORMALIZE_FACTOR = 10.0f;
 
     private final ESLogger logger = Loggers.getLogger(HumaneQuery.class);
@@ -73,26 +75,33 @@ public class HumaneQuery extends Query {
 
     protected final QueryParseContext parseContext;
 
-    private final DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
+    private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
+
+    private final IntentBuilder intentBuilder = IntentBuilder.INSTANCE();
+
+    private final TokensBuilder tokensBuilder = TokensBuilder.INSTANCE();
+
+    private final DisjunctsBuilder disjunctsBuilder = DisjunctsBuilder.INSTANCE();
 
     public HumaneQuery(QueryParseContext parseContext) {
         this.parseContext = parseContext;
     }
 
-    public Query parse(Client client, SuggestionsBuilder suggestionsBuilder, QueryField field, Object value) throws IOException {
+    public Query parse(Client client, QueryField field, Object value) throws IOException {
         try {
+
             QueryField[] queryFields = {field};
 
-            return humaneQuery(client, suggestionsBuilder, queryFields, value.toString());
+            return humaneQuery(client, queryFields, value.toString());
         } catch (Throwable t) {
             logger.error("Error in creating humane query", t);
             throw t;
         }
     }
 
-    public Query parse(Client client, SuggestionsBuilder suggestionsBuilder, QueryField[] fields, Object value) throws IOException {
+    public Query parse(Client client, QueryField[] fields, Object value) throws IOException {
         try {
-            return humaneQuery(client, suggestionsBuilder, fields, value.toString());
+            return humaneQuery(client, fields, value.toString());
         } catch (Throwable t) {
             logger.error("Error in creating humane query", t);
             throw t;
@@ -195,48 +204,52 @@ public class HumaneQuery extends Query {
         if (!noFuzzy && suggestions != null) {
             for (Suggestion suggestion : suggestions) {
                 if (suggestion.isIgnore()
-                        || suggestion.getTokenType() == Suggestion.TokenType.Uni && (suggestion.getMatchLevel() == MatchLevel.Exact || suggestion.getMatchLevel() == MatchLevel.EdgeGram)) {
+                        || suggestion.getTokenType() == Suggestion.TokenType.Uni && (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact || suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGram)) {
                     continue;
                 }
 
+                boolean shingle = suggestion.getTokenType() == Suggestion.TokenType.Bi || suggestion.getTokenType() == Suggestion.TokenType.ShingleBi;
+
                 // only if there is at least one bi token type we add
-                if (!addedShingleQueries && suggestion.getTokenType() == Suggestion.TokenType.Bi) {
-                    fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, true, SHINGLE_EXACT_MATCH_BOOST * field.boost), BooleanClause.Occur.SHOULD);
+                if (!addedShingleQueries && shingle) {
+                    fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, true,
+                            (suggestion.getTokenType() == Suggestion.TokenType.ShingleBi ? SHINGLE_EXACT_MATCH_BOOST : EXACT_MATCH_BOOST) * field.boost), BooleanClause.Occur.SHOULD);
                     // fieldQueryBuilder.add(buildQuery(field, StandardEdgeGramQueryAnalyzerName, text, true, 20.0f * field.boost), BooleanClause.Occur.SHOULD);
 
                     addedShingleQueries = true;
                 }
 
                 float boostMultiplier = DEFAULT_BOOST;
-                if (suggestion.getMatchLevel() == MatchLevel.Synonym) {
+                if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Synonym) {
                     boostMultiplier = SYNONYM_MATCH_BOOST;
-                } else if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+                } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact) {
                     boostMultiplier = SHINGLE_EXACT_MATCH_BOOST;
-                } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+                } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGram) {
                     boostMultiplier = SHINGLE_EDGE_GRAM_BOOST;
-                } else if (suggestion.getMatchLevel() == MatchLevel.Phonetic) {
-                    if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
-                        boostMultiplier = SHINGLE_PHONETIC_BOOST;
-                    } else {
+                } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Phonetic) {
+//                    if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+//                        boostMultiplier = SHINGLE_PHONETIC_BOOST;
+//                    } else {
                         boostMultiplier = PHONETIC_BOOST;
-                    }
-                } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
-                    if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
-                        boostMultiplier = SHINGLE_DEFAULT_BOOST;
-                    } else {
+//                    }
+                } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
+//                    if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+//                        boostMultiplier = SHINGLE_DEFAULT_BOOST;
+//                    } else {
                         boostMultiplier = DEFAULT_BOOST;
-                    }
+//                    }
                 }
 
 //                logger.info("For {} -- boost normalize = {}, boost = {}", suggestion.getSuggestion(), (float) Math.pow(EDIT_DISTANCE_NORMALIZE_FACTOR, suggestion.getEditDistance() + 1), (boostMultiplier * field.boost) / (float) Math.pow(EDIT_DISTANCE_NORMALIZE_FACTOR, suggestion.getEditDistance() + 1));
 
-                fieldQueryBuilder.add(
-                        buildQuery(field,
-                                StandardQueryAnalyzerName,
-                                suggestion.getSuggestion(),
-                                suggestion.getTokenType() == Suggestion.TokenType.Bi,
-                                /*(1 - suggestion.getEditDistance() / BOOST_NORMALIZE_FACTOR) * */(boostMultiplier * field.boost) / (float) Math.pow(EDIT_DISTANCE_NORMALIZE_FACTOR, suggestion.getEditDistance() + 1)),
-                        BooleanClause.Occur.SHOULD);
+                float weight = 0.0f;
+                if (suggestion.getMatchStats().getScore() > 0) {
+                    weight = boostMultiplier * field.boost * suggestion.getMatchStats().getScore();
+                } else {
+                    weight = (boostMultiplier * field.boost) / (float) Math.pow(EDIT_DISTANCE_NORMALIZE_FACTOR, suggestion.getMatchStats().getEditDistance() + 1);
+                }
+
+                fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, suggestion.getSuggestion(), shingle, weight), BooleanClause.Occur.SHOULD);
             }
         }
 
@@ -336,7 +349,7 @@ public class HumaneQuery extends Query {
     }
 
     @SuppressWarnings("unchecked")
-    protected Query humaneQuery(Client client, SuggestionsBuilder suggestionsBuilder, QueryField[] queryFields, String queryText) throws IOException {
+    protected Query humaneQuery(Client client, QueryField[] queryFields, String queryText) throws IOException {
 
         long startTime = 0;
 
@@ -356,7 +369,7 @@ public class HumaneQuery extends Query {
             queryTypes = queryTypesList.toArray(new String[queryTypesList.size()]);
         }
 
-        List<String> tokens = suggestionsBuilder.tokens(this.parseContext.analysisService(), queryText);
+        List<String> tokens = tokensBuilder.tokens(this.parseContext.analysisService(), queryText);
 
         if (logger.isDebugEnabled()) {
             logger.debug("For Index/Type: {}/{} and queryText: {}, got Tokens: {} in {}ms", indexName, queryTypes, queryText, tokens, (System.currentTimeMillis() - startTime));
@@ -382,8 +395,11 @@ public class HumaneQuery extends Query {
                 startTime = System.currentTimeMillis();
             }
 
+            // EXPERIMENTAL
+//            intentBuilder.buildIntent(client, tokens);
+
             Map<String, Conjunct> conjunctMap = new HashMap<>();
-            Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
+            Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap, 3);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("For Index/Type: {}/{} and tokens: {}, got disjuncts: {} in {}ms", indexName, queryTypes, tokens, Arrays.toString(disjuncts), (System.currentTimeMillis() - startTime));
@@ -391,10 +407,20 @@ public class HumaneQuery extends Query {
                 startTime = System.currentTimeMillis();
             }
 
-            final Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(client, conjunctMap.values(), indexName + ":did_you_mean_store");
+            final String[] queryFieldNames = new String[queryFields.length];
+            int i = 0;
+            for (QueryField queryField : queryFields) {
+                queryFieldNames[i++] = queryField.name;
+            }
+
+            final Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(client,
+                    conjunctMap.values(),
+                    new String[]{indexName + ":did_you_mean_store"},
+                    queryTypes,
+                    queryFieldNames);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("For Index: {}/{}, query: {}, tokens: {}, disjuncts: {}, got suggestions: {} in {}ms", indexName, queryTypes, queryText, tokens, Arrays.toString(disjuncts), suggestionsMap, (System.currentTimeMillis() - startTime));
+                logger.debug("For Index/Type: {}/{}, query: {}, tokens: {}, disjuncts: {}, got suggestions: {} in {}ms", indexName, queryTypes, queryText, tokens, Arrays.toString(disjuncts), suggestionsMap, (System.currentTimeMillis() - startTime));
             }
 
             if (suggestionsMap == null || suggestionsMap.size() == 0) {

@@ -8,6 +8,7 @@ import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionSet;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionUtils;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
+import io.threesixtyfy.humaneDiscovery.didYouMean.commons.TokensBuilder;
 import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
@@ -44,7 +45,9 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
     private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
 
-    private final DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
+    private final DisjunctsBuilder disjunctsBuilder = DisjunctsBuilder.INSTANCE();
+
+    private final TokensBuilder tokensBuilder = TokensBuilder.INSTANCE();
 
     @Inject
     public TransportDidYouMeanAction(Settings settings,
@@ -70,13 +73,13 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
         }
 
         Map<String, Conjunct> conjunctMap = new HashMap<>();
-        Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap);
+        Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap, 3);
 
         if (disjuncts == null) {
             return emptyResponse(startTime);
         }
 
-        Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
+        Map<String, SuggestionSet> suggestionsMap = null; //suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
         if (suggestionsMap == null) {
             return emptyResponse(startTime);
         }
@@ -98,7 +101,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                 boolean hasExactMatch = false;
                 boolean unigram = true;
                 for (Suggestion suggestion : suggestions) {
-                    if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+                    if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact) {
                         hasExactMatch = true;
                         if (suggestion.getTokenType() == Suggestion.TokenType.Bi) {
                             unigram = false;
@@ -113,7 +116,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                     DidYouMeanResult[] results = new DidYouMeanResult[size];
 
                     for (Suggestion suggestion : suggestions) {
-                        if (suggestion.getMatchLevel() == MatchLevel.Exact && suggestion.getTokenType() == Suggestion.TokenType.Bi) {
+                        if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact && suggestion.getTokenType() == Suggestion.TokenType.Bi) {
                             results[0] = new DidYouMeanResult(suggestion.getDisplay());
                         }
                     }
@@ -157,7 +160,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                     }
 
                     Suggestion firstSuggestion = suggestionSet.getSuggestions()[0];
-                    if (firstSuggestion.getMatchLevel() != MatchLevel.Exact) {
+                    if (firstSuggestion.getMatchStats().getMatchLevel() != MatchLevel.Exact) {
                         nonExactSuggestionSet = suggestionSet;
                         nonExactConjunctIndex = i;
                         nonExactSuggestion++;
@@ -166,7 +169,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                         for (Conjunct c : conjunctMap.values()) {
                             if (c.getLength() > 1 && c.getTokens().contains(conjunct.getKey())) {
                                 SuggestionSet ss = suggestionsMap.get(c.getKey());
-                                if (!SuggestionUtils.noSuggestions(ss) && ss.getSuggestions()[0].getMatchLevel() != MatchLevel.Exact) {
+                                if (!SuggestionUtils.noSuggestions(ss) && ss.getSuggestions()[0].getMatchStats().getMatchLevel() != MatchLevel.Exact) {
                                     nonExactSuggestion++;
                                     break;
                                 }
@@ -240,17 +243,17 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
     private float getSuggestionScore(int conjunctTokens, Suggestion suggestion) {
         float suggestionScore = 1.0f;
 
-        if (suggestion.getMatchLevel() == MatchLevel.Exact) {
+        if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact) {
             suggestionScore = 1.0f;
-        } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGram) {
+        } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGram) {
             suggestionScore = 0.5f;
-        } else if (suggestion.getMatchLevel() == MatchLevel.Phonetic) {
+        } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Phonetic) {
             suggestionScore = 0.1f;
-        } else if (suggestion.getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
+        } else if (suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
             suggestionScore = 0.05f;
         }
 
-        suggestionScore = (1 - suggestion.getEditDistance() / 10.0f) * suggestionScore;
+        suggestionScore = (1 - suggestion.getMatchStats().getEditDistance() / 10.0f) * suggestionScore;
 
         if (suggestion.getTokenType() == Suggestion.TokenType.Bi || conjunctTokens > 1) {
             suggestionScore = suggestionScore * 2.0f;
@@ -288,7 +291,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                         throw new IOException("IndexService is not found for: " + inputIndices[0]);
                     }
 
-                    List<String> words = suggestionsBuilder.tokens(indexService.analysisService(), didYouMeanRequest.query());
+                    List<String> words = tokensBuilder.tokens(indexService.analysisService(), didYouMeanRequest.query());
 
                     listener.onResponse(buildResponse(words, startTime, didYouMeanIndices));
                 } catch (IOException e) {

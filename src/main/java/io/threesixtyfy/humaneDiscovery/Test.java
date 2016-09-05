@@ -20,10 +20,10 @@ public class Test {
 //        tokens.add("D");
 //        tokens.add("E");
 
-        DisjunctsBuilder disjunctsBuilder = new DisjunctsBuilder();
+        DisjunctsBuilder disjunctsBuilder = DisjunctsBuilder.INSTANCE();
 
         Map<String, Conjunct> uniqueConjuncts = new HashMap<>();
-        Disjunct[] disjuncts = disjunctsBuilder.build(tokens, uniqueConjuncts);
+        Disjunct[] disjuncts = disjunctsBuilder.build(tokens, uniqueConjuncts, 3);
 
         System.out.println(uniqueConjuncts);
 

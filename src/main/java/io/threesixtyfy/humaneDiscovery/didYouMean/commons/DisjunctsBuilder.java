@@ -8,8 +8,17 @@ import java.util.Set;
 
 public class DisjunctsBuilder {
 
+    private static final DisjunctsBuilder instance = new DisjunctsBuilder();
+
+    public static DisjunctsBuilder INSTANCE() {
+        return instance;
+    }
+
+    private DisjunctsBuilder() {
+    }
+
     // TODO: add key prefix for both disjunct and conjunct... key prefix would typically be the index
-    public Disjunct[] build(List<String> tokens, Map<String, Conjunct> uniqueConjuncts) {
+    public Disjunct[] build(List<String> tokens, Map<String, Conjunct> uniqueConjuncts, int maxLength) {
         int size = tokens.size();
 
         if (size == 0) {
@@ -27,7 +36,7 @@ public class DisjunctsBuilder {
                             .build(uniqueConjuncts))
                     .build());
         } else {
-            if (size <= 3) {
+            if (size <= maxLength) {
                 Conjunct.ConjunctBuilder conjunctBuilder = Conjunct.builder();
 
                 tokens.forEach(conjunctBuilder::add);
@@ -56,7 +65,7 @@ public class DisjunctsBuilder {
                 }
             }
 
-            Disjunct[] suffixDisjuncts = build(tokens.subList(1, size), uniqueConjuncts);
+            Disjunct[] suffixDisjuncts = build(tokens.subList(1, size), uniqueConjuncts, maxLength);
             for (Disjunct disjunct : suffixDisjuncts) {
                 String prefix = tokens.get(0);
 
@@ -67,10 +76,10 @@ public class DisjunctsBuilder {
 
                 disjuncts.add(disjunctBuilder.build());
 
-                // for all disjunct, if first conjunct length is < 3, add this to conjunct to create a new conjunct
+                // for all disjunct, if first conjunct length is < maxLength, add this to conjunct to create a new conjunct
                 Conjunct firstConjunct = disjunct.getConjuncts()[0];
 
-                if (firstConjunct.getLength() < 3) {
+                if (firstConjunct.getLength() < maxLength) {
                     disjunctBuilder = Disjunct.builder();
 
                     firstConjunct = Conjunct.builder().add(prefix, firstConjunct).build(uniqueConjuncts);
@@ -87,7 +96,7 @@ public class DisjunctsBuilder {
                 }
             }
 
-            Disjunct[] prefixDisjuncts = build(tokens.subList(0, size - 1), uniqueConjuncts);
+            Disjunct[] prefixDisjuncts = build(tokens.subList(0, size - 1), uniqueConjuncts, maxLength);
             for (Disjunct disjunct : prefixDisjuncts) {
                 String suffix = tokens.get(size - 1);
                 Disjunct.DisjunctBuilder disjunctBuilder = Disjunct.builder();
@@ -98,10 +107,10 @@ public class DisjunctsBuilder {
 
                 disjuncts.add(disjunctBuilder.build());
 
-                // for all disjunct, if last conjunct length is < 3, add this to conjunct to create a new conjunct
+                // for all disjunct, if last conjunct length is < maxLength, add this to conjunct to create a new conjunct
                 int conjunctCount = disjunct.getConjuncts().length;
                 Conjunct lastConjunct = disjunct.getConjuncts()[conjunctCount - 1];
-                if (lastConjunct.getLength() < 3) {
+                if (lastConjunct.getLength() < maxLength) {
                     disjunctBuilder = Disjunct.builder();
 
                     for (int i = 0; i < conjunctCount - 1; i++) {
