@@ -1,4 +1,4 @@
-package io.threesixtyfy.humaneDiscovery.didYouMean.builder;
+package io.threesixtyfy.humaneDiscovery.intent.builder;
 
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.EdgeGramEncodingUtils;
 import io.threesixtyfy.humaneDiscovery.didYouMean.commons.PhoneticEncodingUtils;
@@ -60,7 +60,7 @@ import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.UNIGR
 import static org.elasticsearch.cluster.metadata.IndexMetaData.SETTING_NUMBER_OF_REPLICAS;
 import static org.elasticsearch.cluster.metadata.IndexMetaData.SETTING_NUMBER_OF_SHARDS;
 
-public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouMeanBuilderService> {
+public class IntentSuggestIndexBuilderService extends AbstractLifecycleComponent<IntentSuggestIndexBuilderService> {
 
     public static final String DID_YOY_MEAN_ENABLE_SETTING = "index.did_you_mean_enabled";
 
@@ -151,7 +151,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     };
 
     @Inject
-    public DidYouMeanBuilderService(final Settings settings, final IndicesService indicesService, final Client client, final ClusterService clusterService) {
+    public IntentSuggestIndexBuilderService(final Settings settings, final IndicesService indicesService, final Client client, final ClusterService clusterService) {
         super(settings);
 
         this.indicesService = indicesService;
@@ -373,10 +373,10 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         }
     }
 
-    private void wordFieldAggregateInfo(Map<String, FieldAggregateInfo> subAggregatesInfo, String type, String field, double weight, boolean edgeGram) {
-        String key = type + "/" + field;
+    private void wordFieldAggregateInfo(Map<String, FieldAggregateInfo> subAggregatesInfo, /*String type,*/ String field, double weight, boolean edgeGram) {
+        String key = /*type + "/" +*/ field;
         if (!subAggregatesInfo.containsKey(key)) {
-            subAggregatesInfo.put(key, new FieldAggregateInfo(type, field, weight, 1, edgeGram ? 0 : 1, edgeGram ? 1 : 0));
+            subAggregatesInfo.put(key, new FieldAggregateInfo(/*type,*/ field, weight, 1, edgeGram ? 0 : 1, edgeGram ? 1 : 0));
         } else {
             FieldAggregateInfo fieldAggregateInfo = subAggregatesInfo.get(key);
             fieldAggregateInfo.totalWeight += weight;
@@ -495,7 +495,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                     wordAggregateInfo.countAsFullWord++;
                 }
 
-                String type = wordInfo.typeName;
+//                String type = wordInfo.typeName;
                 String field = wordInfo.fieldName;
 
                 String originalWord = wordInfo.originalWord;
@@ -510,14 +510,14 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                         wordAggregateInfo.originalWords.put(originalWord, originalWordInfo);
                     }
 
-                    wordFieldAggregateInfo(originalWordInfo.fieldAggregateInfo, type, field, wordInfo.suggestionWeight, edgeGram);
+                    wordFieldAggregateInfo(originalWordInfo.fieldAggregateInfo, /*type,*/ field, wordInfo.suggestionWeight, edgeGram);
                 }
 
 //                // aggregate by type
 //                wordFieldAggregateInfo(wordAggregateInfo.typeAggregateInfo, type, wordInfo.suggestionWeight, edgeGram);
 
                 // aggregate by fieldName
-                wordFieldAggregateInfo(wordAggregateInfo.fieldAggregateInfo, type, field, wordInfo.suggestionWeight, edgeGram);
+                wordFieldAggregateInfo(wordAggregateInfo.fieldAggregateInfo, /*type,*/ field, wordInfo.suggestionWeight, edgeGram);
                 // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             }
         });
@@ -883,73 +883,82 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
         private void add(ParsedDocument parsedDocument) {
             EdgeGramEncodingUtils edgeGramEncodingUtils = new EdgeGramEncodingUtils(1);
+
             TokenStream tokenStream = null;
+
             for (ParseContext.Document document : parsedDocument.docs()) {
-                for (IndexableField field : document.getFields()) {
-//                    logger.info("Parsing fieldName: {}, type: {}", fieldName.name(), fieldName.fieldType().getClass());
-                    IndexableFieldType fieldType = field.fieldType();
-
-                    double suggestionWeight;
-
-                    if (fieldType instanceof HumaneTextFieldMapper.HumaneTextFieldType) {
-                        suggestionWeight = ((HumaneTextFieldMapper.HumaneTextFieldType) fieldType).getSuggestionWeight();
-                    } else if (fieldType instanceof HumaneDescriptiveTextFieldMapper.HumaneDescriptiveTextFieldType) {
-                        suggestionWeight = ((HumaneDescriptiveTextFieldMapper.HumaneDescriptiveTextFieldType) fieldType).getSuggestionWeight();
-                    } else {
-                        continue;
-                    }
-
-//                    logger.info("Considering fieldName: {}, weight: {}, class: {}", fieldName.name(), suggestionWeight, fieldType.getClass());
-
-                    tokenStream = field.tokenStream(this.humaneAnalyzer, tokenStream);
-
-                    String fieldName = field.name().substring(0, field.name().length() - 7);
-
-                    try {
-                        tokenStream.reset();
-                        CharTermAttribute termAttribute = tokenStream.getAttribute(CharTermAttribute.class);
-
-                        String previousWord = null;
-
-                        while (tokenStream.incrementToken()) {
-                            String word = termAttribute.toString();
-
-//                            logger.info("Adding word {} for type: {}, index: {}", word, parsedDocument.type(), this.indexName);
-
-                            wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), fieldName, word, suggestionWeight, false, word));
-                            queuedWordCount.addAndGet(1);
-
-                            if (StringUtils.isNotEmpty(previousWord)) {
-                                wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), fieldName, previousWord, word, suggestionWeight, false, previousWord + word, previousWord + " " + word));
-                                queuedWordCount.addAndGet(1);
-                            }
-
-                            for (String edgeGram : edgeGramEncodingUtils.buildEncodings(word)) {
-                                if (fieldType instanceof HumaneTextFieldMapper.HumaneTextFieldType || edgeGram.length() > 1) {
-                                    wordQueue.offer(new WordInfo(this.indexName, parsedDocument.type(), fieldName, edgeGram, suggestionWeight, true, word));
-                                    queuedWordCount.addAndGet(1);
-                                }
-
-                                if (StringUtils.isNotEmpty(previousWord)) {
-                                    wordQueue.offer(new BigramWordInfo(this.indexName, parsedDocument.type(), fieldName, previousWord, edgeGram, suggestionWeight, true, previousWord + word, previousWord + " " + word));
-                                    queuedWordCount.addAndGet(1);
-                                }
-                            }
-
-                            previousWord = word;
-                        }
-
-                        tokenStream.close();
-                    } catch (IOException e) {
-                        logger.error("IOException in parsing document {}, name {}", e, parsedDocument, field);
-                    }
-                }
+                tokenStream = addDoc(edgeGramEncodingUtils, tokenStream, document);
             }
 
             if (queuedWordCount.get() > 0 && pollerParked.compareAndSet(true, false)) {
                 // logger.info("un-parking poller as new words have been queued");
                 LockSupport.unpark(poller);
             }
+        }
+
+        private TokenStream addDoc(EdgeGramEncodingUtils edgeGramEncodingUtils, TokenStream tokenStream, ParseContext.Document document) {
+            IndexableField nameField = document.getField("name");
+            IndexableField valueField = document.getField("value.humane");
+
+            IndexableFieldType fieldType = valueField.fieldType();
+
+            double suggestionWeight;
+
+            if (fieldType instanceof HumaneTextFieldMapper.HumaneTextFieldType) {
+                suggestionWeight = ((HumaneTextFieldMapper.HumaneTextFieldType) fieldType).getSuggestionWeight();
+            } else if (fieldType instanceof HumaneDescriptiveTextFieldMapper.HumaneDescriptiveTextFieldType) {
+                suggestionWeight = ((HumaneDescriptiveTextFieldMapper.HumaneDescriptiveTextFieldType) fieldType).getSuggestionWeight();
+            } else {
+                return tokenStream;
+            }
+
+//                    logger.info("Considering fieldName: {}, weight: {}, class: {}", fieldName.name(), suggestionWeight, fieldType.getClass());
+
+            tokenStream = valueField.tokenStream(this.humaneAnalyzer, tokenStream);
+
+//                String fieldName = field.name().substring(0, field.name().length() - 7);
+            String fieldName = nameField.stringValue();
+
+            try {
+                tokenStream.reset();
+                CharTermAttribute termAttribute = tokenStream.getAttribute(CharTermAttribute.class);
+
+                String previousWord = null;
+
+                while (tokenStream.incrementToken()) {
+                    String word = termAttribute.toString();
+
+//                            logger.info("Adding word {} for type: {}, index: {}", word, parsedDocument.type(), this.indexName);
+
+                    wordQueue.offer(new WordInfo(this.indexName, /*parsedDocument.type(),*/ fieldName, word, suggestionWeight, false, word));
+                    queuedWordCount.addAndGet(1);
+
+                    if (StringUtils.isNotEmpty(previousWord)) {
+                        wordQueue.offer(new BigramWordInfo(this.indexName, /*parsedDocument.type(),*/ fieldName, previousWord, word, suggestionWeight, false, previousWord + word, previousWord + " " + word));
+                        queuedWordCount.addAndGet(1);
+                    }
+
+                    for (String edgeGram : edgeGramEncodingUtils.buildEncodings(word)) {
+                        if (fieldType instanceof HumaneTextFieldMapper.HumaneTextFieldType || edgeGram.length() > 1) {
+                            wordQueue.offer(new WordInfo(this.indexName, /*parsedDocument.type(),*/ fieldName, edgeGram, suggestionWeight, true, word));
+                            queuedWordCount.addAndGet(1);
+                        }
+
+                        if (StringUtils.isNotEmpty(previousWord)) {
+                            wordQueue.offer(new BigramWordInfo(this.indexName, /*parsedDocument.type(),*/ fieldName, previousWord, edgeGram, suggestionWeight, true, previousWord + word, previousWord + " " + word));
+                            queuedWordCount.addAndGet(1);
+                        }
+                    }
+
+                    previousWord = word;
+                }
+
+                tokenStream.close();
+            } catch (IOException e) {
+                logger.error("IOException in parsing document {}, name {}", e, document, valueField);
+            }
+
+            return tokenStream;
         }
 
         @Override
@@ -979,7 +988,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
     static class WordInfo {
         String indexName;
-        String typeName;
+        //        String typeName;
         String fieldName;
 
         String word;
@@ -989,13 +998,13 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
 
         double suggestionWeight = 1.0f;
 
-        public WordInfo(String indexName, String typeName, String fieldName, String word, double suggestionWeight, boolean edgeGram, String originalWord) {
-            this(indexName, typeName, fieldName, word, suggestionWeight, edgeGram, originalWord, null);
+        public WordInfo(String indexName, /*String typeName, */String fieldName, String word, double suggestionWeight, boolean edgeGram, String originalWord) {
+            this(indexName, /*typeName,*/ fieldName, word, suggestionWeight, edgeGram, originalWord, null);
         }
 
-        public WordInfo(String indexName, String typeName, String fieldName, String word, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
+        public WordInfo(String indexName, /*String typeName,*/ String fieldName, String word, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
             this.indexName = indexName;
-            this.typeName = typeName;
+//            this.typeName = typeName;
             this.fieldName = fieldName;
             this.word = word;
             this.suggestionWeight = suggestionWeight;
@@ -1008,7 +1017,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         public String toString() {
             return "{" +
                     "indexName='" + indexName + '\'' +
-                    ", typeName='" + typeName + '\'' +
+//                    ", typeName='" + typeName + '\'' +
                     ", fieldName='" + fieldName + '\'' +
                     ", word='" + word + '\'' +
                     ", edgeGram=" + edgeGram +
@@ -1023,8 +1032,8 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         String word1;
         String word2;
 
-        public BigramWordInfo(String indexName, String typeName, String field, String word1, String word2, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
-            super(indexName, typeName, field, word1 + word2, suggestionWeight, edgeGram, originalWord, originalDisplay);
+        public BigramWordInfo(String indexName, /*String typeName,*/ String field, String word1, String word2, double suggestionWeight, boolean edgeGram, String originalWord, String originalDisplay) {
+            super(indexName, /*typeName,*/ field, word1 + word2, suggestionWeight, edgeGram, originalWord, originalDisplay);
 
             this.word1 = word1;
             this.word2 = word2;
@@ -1201,15 +1210,15 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
     }
 
     static class FieldAggregateInfo {
-        String typeName;
+        //        String typeName;
         String fieldName;
         double totalWeight;
         int totalCount;
         int countAsFullWord;
         int countAsEdgeGram;
 
-        public FieldAggregateInfo(String typeName, String fieldName, double totalWeight, int totalCount, int countAsFullWord, int countAsEdgeGram) {
-            this.typeName = typeName;
+        public FieldAggregateInfo(/*String typeName, */String fieldName, double totalWeight, int totalCount, int countAsFullWord, int countAsEdgeGram) {
+//            this.typeName = typeName;
             this.fieldName = fieldName;
             this.totalWeight = totalWeight;
             this.totalCount = totalCount;
@@ -1220,7 +1229,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         public Map<String, Object> map() {
             Map<String, Object> map = new HashMap<>();
 
-            map.put("typeName", typeName);
+//            map.put("typeName", typeName);
             map.put("fieldName", fieldName);
 
             if (totalWeight > 0) {
@@ -1253,7 +1262,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
                 countAsEdgeGram = (int) map.get("countAsEdgeGram");
             }
 
-            return new FieldAggregateInfo((String) map.get("typeName"),
+            return new FieldAggregateInfo(/*(String) map.get("typeName"),*/
                     (String) map.get("fieldName"),
                     (double) map.get("totalWeight"),
                     (int) map.get("totalCount"),
@@ -1264,7 +1273,7 @@ public class DidYouMeanBuilderService extends AbstractLifecycleComponent<DidYouM
         @Override
         public String toString() {
             return "{" +
-                    "typeName='" + typeName + '\'' +
+//                    "typeName='" + typeName + '\'' +
                     ", fieldName='" + fieldName + '\'' +
                     ", totalWeight=" + totalWeight +
                     ", totalCount=" + totalCount +

@@ -10,8 +10,6 @@ public class SuggestionsBuilder {
     public static final String HUMANE_QUERY_ANALYZER = "humane_query_analyzer";
     public static final String DUMMY_FIELD = "dummyField";
 
-//    private final ESLogger logger = Loggers.getLogger(SuggestionsBuilder.class);
-
     private static final SuggestionsBuilder instance = new SuggestionsBuilder();
 
     private final SpellSuggestionsBuilder spellSuggestionsBuilder = new SpellSuggestionsBuilder();

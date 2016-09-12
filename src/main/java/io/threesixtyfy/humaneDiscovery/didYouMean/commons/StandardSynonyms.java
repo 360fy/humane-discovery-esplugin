@@ -17,6 +17,7 @@ public class StandardSynonyms {
         synonyms.put("capsule", new String[]{"capsules"});
         synonyms.put("capsules", new String[]{"capsule"});
         synonyms.put("hilamya", new String[]{"himalaya"});
+        synonyms.put("corcin", new String[]{"crocin"});
     }
 
     public String[] get(String word) {

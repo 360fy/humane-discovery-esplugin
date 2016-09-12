@@ -1,7 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
-import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.inject.Inject;
@@ -14,19 +12,22 @@ import org.elasticsearch.index.query.QueryParser;
 import org.elasticsearch.index.query.QueryParsingException;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
 public class MultiFieldHumaneQueryParser implements QueryParser {
 
-    public static final String FIELD_QUERY = "query";
-    public static final String FIELD_FIELDS = "fields";
-    public static final String FIELD_FIELD = "field";
-    public static final String FIELD_PATH = "path";
-    public static final String FIELD_NO_FUZZY = "noFuzzy";
-    public static final String FIELD_VERNACULAR_ONLY = "vernacularOnly";
-    public static final String FIELD_BOOST = "boost";
-    public static final String FIELD_NAME = "_name";
+    public static final String TAG_QUERY = "query";
+    public static final String TAG_FIELDS = "fields";
+    public static final String TAG_FIELD = "field";
+    public static final String TAG_PATH = "path";
+    public static final String TAG_NO_FUZZY = "noFuzzy";
+    public static final String TAG_VERNACULAR_ONLY = "vernacularOnly";
+    public static final String TAG_BOOST = "boost";
+    public static final String TAG_NAME = "_name";
+    public static final String TAG_INTENT_INDEX = "intentIndex";
+    public static final String TAG_INTENT_FIELDS = "intentFields";
     public static final float DEFAULT_BOOST = 1.0f;
     private final ESLogger logger = Loggers.getLogger(MultiFieldHumaneQueryParser.class);
 
@@ -62,18 +63,21 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
         String queryName = null;
         Object queryText = null;
 
+        String intentIndex = null;
+        String[] intentFields = null;
+
         QueryField previousField = null;
 
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
-            } else if (FIELD_QUERY.equals(currentFieldName)) {
+            } else if (TAG_QUERY.equals(currentFieldName)) {
                 if (token.isValue()) {
                     queryText = parser.objectText();
                 } else {
                     throw new QueryParsingException(parseContext, "[query must be text]");
                 }
-            } else if (FIELD_FIELDS.equals(currentFieldName)) {
+            } else if (TAG_FIELDS.equals(currentFieldName)) {
                 if (token == XContentParser.Token.START_ARRAY) {
                     // parse fields
                     queryFields = new LinkedList<>();
@@ -89,15 +93,15 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
                             while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
                                 if (token == XContentParser.Token.FIELD_NAME) {
                                     currentFieldName = parser.currentName();
-                                } else if (FIELD_FIELD.equals(currentFieldName)) {
+                                } else if (TAG_FIELD.equals(currentFieldName)) {
                                     queryField.name = parser.text();
-                                } else if (FIELD_PATH.equals(currentFieldName)) {
+                                } else if (TAG_PATH.equals(currentFieldName)) {
                                     queryField.path = parser.text();
-                                } else if (FIELD_NO_FUZZY.equals(currentFieldName)) {
+                                } else if (TAG_NO_FUZZY.equals(currentFieldName)) {
                                     queryField.noFuzzy = parser.booleanValue();
-                                } else if (FIELD_VERNACULAR_ONLY.equals(currentFieldName)) {
+                                } else if (TAG_VERNACULAR_ONLY.equals(currentFieldName)) {
                                     queryField.vernacularOnly = parser.booleanValue();
-                                } else if (FIELD_BOOST.equals(currentFieldName)) {
+                                } else if (TAG_BOOST.equals(currentFieldName)) {
                                     queryField.boost = parser.floatValue();
                                 } else {
                                     throw new QueryParsingException(parseContext, "[" + MULTI_HUMANE_QUERY + "] query does not support [" + currentFieldName + "]");
@@ -121,10 +125,30 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
                 } else {
                     throw new QueryParsingException(parseContext, "[" + MULTI_HUMANE_QUERY + "] query does not support [" + token + "]");
                 }
-            } else if (FIELD_NAME.equals(currentFieldName)) {
+            } else if (TAG_NAME.equals(currentFieldName)) {
                 queryName = parser.text();
-            } else if (FIELD_BOOST.equals(currentFieldName)) {
+            } else if (TAG_BOOST.equals(currentFieldName)) {
                 boost = parser.floatValue();
+            } else if (TAG_INTENT_INDEX.equals(currentFieldName)) {
+                intentIndex = parser.text();
+            } else if (TAG_INTENT_FIELDS.equals(currentFieldName)) {
+                if (token == XContentParser.Token.START_ARRAY) {
+                    // parse fields
+                    List<String> intentFieldList = new ArrayList<>();
+
+                    while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
+                        if (token.isValue()) {
+                            // we have simple field
+                            intentFieldList.add(parser.text());
+                        } else {
+                            throw new QueryParsingException(parseContext, "intent field must be simple field name but got [" + token + "]");
+                        }
+                    }
+
+                    intentFields = intentFieldList.toArray(new String[intentFieldList.size()]);
+                } else {
+                    throw new QueryParsingException(parseContext, "intentFields must be array of fields, but got [" + token + "]");
+                }
             } else {
                 throw new QueryParsingException(parseContext, "[" + MULTI_HUMANE_QUERY + "] query does not support [" + currentFieldName + "]");
             }
@@ -142,14 +166,14 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
             throw new QueryParsingException(parseContext, "For single field query use [humane_query] instead");
         }
 
-        Query query = humaneQuery.parse(this.client, queryFields.toArray(new QueryField[queryFields.size()]), queryText);
+        Query query = humaneQuery.parse(this.client, queryFields.toArray(new QueryField[queryFields.size()]), queryText, intentIndex, intentFields);
         if (query == null) {
             return Queries.newMatchNoDocsQuery();
         }
 
-        if (boost != DEFAULT_BOOST) {
-            query = new BoostQuery(query, boost);
-        }
+//        if (boost != DEFAULT_BOOST) {
+//            query = new BoostQuery(query, boost);
+//        }
 
         if (queryName != null) {
             parseContext.addNamedQuery(queryName, query);

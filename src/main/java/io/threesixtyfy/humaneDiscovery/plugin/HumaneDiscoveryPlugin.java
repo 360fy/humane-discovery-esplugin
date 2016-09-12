@@ -11,8 +11,11 @@ import io.threesixtyfy.humaneDiscovery.analyzer.HumaneTextAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.analyzer.HumaneVernacularAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.didYouMean.action.DidYouMeanAction;
 import io.threesixtyfy.humaneDiscovery.didYouMean.action.TransportDidYouMeanAction;
-import io.threesixtyfy.humaneDiscovery.didYouMean.builder.DidYouMeanBuilderService;
+import io.threesixtyfy.humaneDiscovery.intent.builder.IntentSuggestIndexBuilderService;
 import io.threesixtyfy.humaneDiscovery.didYouMean.rest.DidYouMeanRestAction;
+import io.threesixtyfy.humaneDiscovery.intent.action.IntentAction;
+import io.threesixtyfy.humaneDiscovery.intent.action.TransportIntentAction;
+import io.threesixtyfy.humaneDiscovery.intent.rest.IntentRestAction;
 import io.threesixtyfy.humaneDiscovery.mapper.HumaneDescriptiveTextFieldMapper;
 import io.threesixtyfy.humaneDiscovery.mapper.HumaneTextFieldMapper;
 import io.threesixtyfy.humaneDiscovery.query.HumaneQueryParser;
@@ -70,14 +73,16 @@ public class HumaneDiscoveryPlugin extends Plugin {
 
     public void onModule(RestModule module) {
         module.addRestAction(DidYouMeanRestAction.class);
+        module.addRestAction(IntentRestAction.class);
     }
 
     public void onModule(ActionModule module) {
         module.registerAction(DidYouMeanAction.INSTANCE, TransportDidYouMeanAction.class);
+        module.registerAction(IntentAction.INSTANCE, TransportIntentAction.class);
     }
 
     @Override
     public Collection<Class<? extends LifecycleComponent>> nodeServices() {
-        return ImmutableList.of(DidYouMeanBuilderService.class);
+        return ImmutableList.of(IntentSuggestIndexBuilderService.class);
     }
 }

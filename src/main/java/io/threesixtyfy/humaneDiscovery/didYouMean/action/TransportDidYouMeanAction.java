@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMeanRequest, DidYouMeanResponse> {
 
@@ -202,7 +203,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                 }
 
                 for (Suggestion suggestion : nonExactSuggestionSet.getSuggestions()) {
-                    String suggestText = Arrays.asList(prefix.toString(), suggestion.getDisplay(), suffix.toString()).stream()
+                    String suggestText = Stream.of(prefix.toString(), suggestion.getDisplay(), suffix.toString())
                             .filter(val -> val != null && !StringUtils.isEmpty(val))
                             .collect(Collectors.joining(" "));
 
@@ -291,7 +292,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                         throw new IOException("IndexService is not found for: " + inputIndices[0]);
                     }
 
-                    List<String> words = tokensBuilder.tokens(indexService.analysisService(), didYouMeanRequest.query());
+                    List<String> words = tokensBuilder.tokens(indexService.analysisService(), didYouMeanRequest.querySource().query());
 
                     listener.onResponse(buildResponse(words, startTime, didYouMeanIndices));
                 } catch (IOException e) {

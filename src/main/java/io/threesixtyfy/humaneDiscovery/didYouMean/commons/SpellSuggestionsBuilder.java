@@ -4,7 +4,6 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
-import org.apache.lucene.search.spell.LevensteinDistance;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.logging.ESLogger;
@@ -39,12 +38,13 @@ import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.GRAM_
 import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.Constants.GRAM_START_PREFIX_LENGTH;
 import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel.EdgeGram;
 import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel.EdgeGramPhonetic;
+import static io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel.Phonetic;
 import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
 
 public class SpellSuggestionsBuilder {
 
-    public static final float GRAM_START_BOOST = 5.0f;
-    public static final float GRAM_END_BOOST = 5.0f;
+    public static final float GRAM_START_BOOST = 10.0f;
+    public static final float GRAM_END_BOOST = 10.0f;
     public static final float EXACT_TERM_BOOST = 100.0f;
     public static final int MINIMUM_NUMBER_SHOULD_MATCH = 2;
     public static final String FIELD_TOTAL_WEIGHT = "totalWeight";
@@ -61,7 +61,6 @@ public class SpellSuggestionsBuilder {
     public static final String FIELD_WORD_2_ENCODINGS = "word2Encodings";
     public static final String FIELD_STATS = "fieldStats";
     public static final String FIELD_FIELD_NAME = "fieldName";
-    public static final String FIELD_TYPE_NAME = "typeName";
 
     private final ESLogger logger = Loggers.getLogger(SpellSuggestionsBuilder.class);
 
@@ -72,8 +71,6 @@ public class SpellSuggestionsBuilder {
     private StandardSynonyms standardSynonyms = new StandardSynonyms();
 
     private final EncodingsBuilder encodingsBuilder = new EncodingsBuilder();
-
-    private final LevensteinDistance levensteinDistance = new LevensteinDistance();
 
     // TODO: expire on event only
     private final Cache<String, CompletableFuture<SuggestionSet>> CachedCompletableResponses = CacheBuilder
@@ -102,7 +99,7 @@ public class SpellSuggestionsBuilder {
         return null;
     }
 
-    private CompletableFuture<SuggestionSet> store(TaskContext taskContext, String key, String word, CompletableFuture<SuggestionSet> future) {
+    private CompletableFuture<SuggestionSet> store(TaskContext taskContext, String key, CompletableFuture<SuggestionSet> future) {
         taskContext.queryKeys.add(key);
         taskContext.suggestionResponses.add(future);
 
@@ -114,18 +111,18 @@ public class SpellSuggestionsBuilder {
 
         // we do not store these... as re-calculating them would not be that costly
         if (number) {
-            return store(taskContext, key, word, NumberSuggestion);
+            return store(taskContext, key, NumberSuggestion);
         }
 
         boolean stopWord = StopWords.contains(word);
 
         if (word.length() == 1) {
-            return store(taskContext, key, word, SingleLetterSuggestion);
+            return store(taskContext, key, SingleLetterSuggestion);
         }
 
         CompletableFuture<SuggestionSet> future = CachedCompletableResponses.get(key(taskContext, key), () -> future(taskContext, key, word, compound, stopWord, builder.apply(stopWord)));
 
-        return store(taskContext, key, word, future);
+        return store(taskContext, key, future);
     }
 
     private CompletableFuture<SuggestionSet> future(final TaskContext taskContext, String key, String word, boolean compoundWord, boolean stopWord, QueryBuilder queryBuilder) {
@@ -136,15 +133,8 @@ public class SpellSuggestionsBuilder {
         return CompletableFuture
                 .supplyAsync(() ->
                                 taskContext.client.prepareSearch(taskContext.indices)
-                                        .setSize(25)
+                                        .setSize(50)
                                         .setQuery(queryBuilder)
-//                                            .addFieldDataField("encodings")
-//                                            .addField("totalWeight")
-//                                            .addField("totalCount")
-//                                            .addField("countAsFullWord")
-//                                            .addFieldDataField("word")
-//                                            .addFieldDataField("word1")
-//                                            .addFieldDataField("word2")
                                         .setFetchSource(FETCH_SOURCES, null)
                                         .execute()
                                         .actionGet(500, TimeUnit.MILLISECONDS),
@@ -164,14 +154,8 @@ public class SpellSuggestionsBuilder {
 
     private void addScope(TaskContext taskContext, BoolQueryBuilder boolQueryBuilder) {
         BoolQueryBuilder scopeQueryBuilder = new BoolQueryBuilder();
-        for (String typeName : taskContext.queryTypes) {
-            for (String fieldName : taskContext.queryFields) {
-
-                scopeQueryBuilder.should(QueryBuilders.nestedQuery("fieldStats",
-                        new BoolQueryBuilder()
-                                .must(QueryBuilders.termQuery("fieldStats.typeName", typeName))
-                                .must(QueryBuilders.termQuery("fieldStats.fieldName", fieldName))));
-            }
+        for (String fieldName : taskContext.queryFields) {
+            scopeQueryBuilder.should(QueryBuilders.nestedQuery("fieldStats", QueryBuilders.termQuery("fieldStats.fieldName", fieldName)));
         }
 
         scopeQueryBuilder.minimumNumberShouldMatch(1);
@@ -199,6 +183,22 @@ public class SpellSuggestionsBuilder {
 
             return boolQueryBuilder;
         });
+
+//        getOrBuildFuture(taskContext, key, word, false, (stopWord) -> {
+//            Set<String> encodings = encodingsBuilder.encodings(word, stopWord);
+//
+//            if (logger.isDebugEnabled()) {
+//                logger.debug("Encoding for word {} = {}", word, encodings);
+//            }
+//
+//            BoolQueryBuilder boolQueryBuilder = new BoolQueryBuilder()
+//                    .should(buildWordQuery(Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_ENCODINGS, word, encodings, onlyFullWord))
+//                    .minimumNumberShouldMatch(1);
+//
+//            addScope(taskContext, boolQueryBuilder);
+//
+//            return boolQueryBuilder;
+//        });
     }
 
     @SuppressWarnings("unchecked")
@@ -313,8 +313,10 @@ public class SpellSuggestionsBuilder {
 
             if (w.startsWith(Constants.GRAM_START_PREFIX)) {
                 termQueryBuilder.boost(GRAM_START_BOOST * (length - GRAM_START_PREFIX_LENGTH));
+//                termQueryBuilder.boost(GRAM_START_BOOST);
             } else if (w.startsWith(Constants.GRAM_END_PREFIX)) {
                 termQueryBuilder.boost(GRAM_END_BOOST * (length - GRAM_END_PREFIX_LENGTH));
+//                termQueryBuilder.boost(GRAM_END_BOOST);
             } else if (w.startsWith(GRAM_PREFIX)) {
                 termQueryBuilder.boost(length - GRAM_PREFIX_LENGTH);
             }
@@ -337,14 +339,14 @@ public class SpellSuggestionsBuilder {
 
         if (isHigh) {
             if (logger.isDebugEnabled()) {
-                logger.info("High edit distance for input: {}, suggested: {}, stats: {}", inputWord, suggestedWord, currentStats);
+                logger.debug("High edit distance for input: {}, suggested: {}, stats: {}", inputWord, suggestedWord, currentStats);
             }
         }
 
         return isHigh;
     }
 
-    private boolean goodSuggestion(Suggestion.MatchStats bestStats, Suggestion.MatchStats previousStats, Suggestion.MatchStats currentStats, int inputWordLength) {
+    private boolean goodSuggestion(Suggestion.MatchStats bestStats, Suggestion.MatchStats currentStats, int inputWordLength) {
         if (bestStats != null) {
             if (inputWordLength <= 4 && currentStats.editDistance / inputWordLength > 0.40) {
                 return false;
@@ -355,29 +357,14 @@ public class SpellSuggestionsBuilder {
             }
 
             // we relax at the most one edit distance from the best match
-            if (bestStats.editDistance + 1 < currentStats.editDistance) {
+            if (bestStats.editDistance != currentStats.editDistance) {
                 return false;
             }
 
-//            // more than 40% drop in lDistance -- earlier 25%
-//            if ((bestStats.lDistance - currentStats.lDistance) / currentStats.lDistance > 0.40) {
-//                return false;
-//            }
-//
-//            // more than 40% drop in jwDistance -- earlier 25%
-//            if ((bestStats.jwDistance - currentStats.jwDistance) / currentStats.jwDistance > 0.40) {
-//                return false;
-//            }
-//
-//            // more than 5 times drop from best score -- earlier 3 times
-//            if (bestStats.score / currentStats.score > 5.0) {
-//                return false;
-//            }
-//
-//            // more than 3.0 drop from previous score -- earlier 2 times
-//            if (previousStats != null && bestStats.score != previousStats.score && previousStats.score / currentStats.score > 3.0) {
-//                return false;
-//            }
+            // more than 5 times drop from best score -- earlier 3 times
+            if (currentStats.score * 3.0 < bestStats.score) {
+                return false;
+            }
         }
 
         return true;
@@ -386,46 +373,46 @@ public class SpellSuggestionsBuilder {
     @SuppressWarnings("unchecked")
     private void buildSuggestion(TaskContext taskContext,
                                  Suggestion.MatchStats bestStats,
-                                 Suggestion.MatchStats previousStats,
-                                 Suggestion.MatchStats currentStats,
+                                 Suggestion.MatchStats matchStats,
                                  SearchHit searchHit,
                                  String inputWord,
                                  Suggestion.TokenType tokenType,
-                                 String suggestedWord,
+                                 String matchedWord,
                                  String display,
                                  int inputWordLength,
                                  boolean ignorePrefixSuggestions,
                                  Map<String, Suggestion> suggestionMap) {
         double totalWeight = fieldValue(searchHit, FIELD_TOTAL_WEIGHT, 0.0d);
         int totalCount = fieldValue(searchHit, FIELD_TOTAL_COUNT, 0);
-        int countAsFullWord = fieldValue(searchHit, FIELD_COUNT_AS_FULL_WORD, 0);
         List<Object> suggestedWordEncodings = fieldValues(searchHit, FIELD_ENCODINGS);
 
-        boolean edgeGram = (countAsFullWord * 100.0 / totalCount) < 40.0;
-
         // suggested word is prefix of input word
-        if (ignorePrefixSuggestions && !inputWord.equals(suggestedWord) && (inputWord.startsWith(suggestedWord) || inputWord.endsWith(suggestedWord))) {
+        if (ignorePrefixSuggestions && !inputWord.equals(matchedWord) && (inputWord.startsWith(matchedWord) || inputWord.endsWith(matchedWord))) {
             return;
         }
 
-        // 5 edit distance is too high, isn't it
-        if (highEditDistance(currentStats, inputWord, suggestedWord)) {
+        if (highEditDistance(matchStats, inputWord, matchedWord)) {
             return;
         }
 
-        if (currentStats.editDistance >= 3) {
+        if (matchStats.editDistance >= 3) {
             Set<String> inputWordEncodings = encodingsBuilder.encodings(inputWord, StopWords.contains(inputWord));
 
             if (inputWordEncodings != null) {
                 int encodingMatches = 0;
                 for (Object e : suggestedWordEncodings) {
                     String encoding = (String) e;
-                    if (e != null && !encoding.startsWith(GRAM_PREFIX) && !encoding.startsWith(Constants.GRAM_START_PREFIX) && !encoding.startsWith(Constants.GRAM_END_PREFIX) && inputWordEncodings.contains(e)) {
+                    if (e != null && !encoding.startsWith(GRAM_PREFIX)
+                            && !encoding.startsWith(Constants.GRAM_START_PREFIX)
+                            && !encoding.startsWith(Constants.GRAM_END_PREFIX)
+                            && inputWordEncodings.contains(e)) {
                         encodingMatches++;
                     }
                 }
 
-                logger.info("For input: {}, suggested: {}, encoding matches = {}", inputWord, suggestedWord, encodingMatches);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("For input: {}, suggested: {}, encoding matches = {}", inputWord, matchedWord, encodingMatches);
+                }
 
                 if (encodingMatches == 0) {
                     return;
@@ -433,53 +420,36 @@ public class SpellSuggestionsBuilder {
             }
         }
 
-        boolean goodSuggestion = goodSuggestion(bestStats, previousStats, currentStats, inputWordLength);
+        boolean goodSuggestion = goodSuggestion(bestStats, matchStats, inputWordLength);
 
         if (logger.isDebugEnabled()) {
-            logger.debug(">>>>> {} suggestion for input: {}, suggested: {}, best: {}, previous: {}, current: {}", goodSuggestion ? "Including" : "Ignoring", inputWord, suggestedWord, bestStats, previousStats, currentStats);
+            logger.debug(">>>>> {} suggestion for input: {}, suggested: {}, best: {}, current: {}", goodSuggestion ? "Including" : "Ignoring", inputWord, matchedWord, bestStats, /*previousStats,*/ matchStats);
         }
 
         if (!goodSuggestion) {
             return;
         }
 
-        // TODO: if we are adding all original words, why it is needed ???
-        if (!edgeGram) {
-            addSuggestion(new Suggestion(tokenType,
-                            suggestedWord,
-                            suggestedWord,
-                            display,
-                            currentStats,
-                            totalWeight,
-                            totalCount),
-                    suggestionMap);
-        }
+        if (bestStats != null && bestStats.getMatchLevel().getLevel() >= Phonetic.getLevel()) {
+            List<Object> originalWordsInfoList = fieldValues(searchHit, FIELD_ORIGINAL_WORDS);
 
-        List<Object> originalWordsInfoList = fieldValues(searchHit, FIELD_ORIGINAL_WORDS); //searchHit.sourceAsMap().get("originalWords");
+            for (Object originalWordData : originalWordsInfoList) {
+                Map<String, Object> originalWordInfo = (Map<String, Object>) originalWordData;
+                String originalWord = (String) originalWordInfo.get(FIELD_WORD);
+                String originalDisplay = (String) originalWordInfo.get(FIELD_DISPLAY);
+                int originalWordCount = (int) originalWordInfo.getOrDefault(FIELD_TOTAL_COUNT, 0);
+                double originalWordWeight = (double) originalWordInfo.getOrDefault(FIELD_TOTAL_WEIGHT, 0.0d);
 
-        for (Object originalWordData : originalWordsInfoList) {
-            Map<String, Object> originalWordInfo = (Map<String, Object>) originalWordData;
-            String originalWord = (String) originalWordInfo.get(FIELD_WORD);
-            String originalDisplay = (String) originalWordInfo.get(FIELD_DISPLAY);
-            int originalWordCount = (int) originalWordInfo.getOrDefault(FIELD_TOTAL_COUNT, 0);
-            double originalWordWeight = (double) originalWordInfo.getOrDefault(FIELD_TOTAL_WEIGHT, 0.0d);
+                if (originalDisplay == null) {
+                    originalDisplay = originalWord;
+                }
 
-            if (originalDisplay == null) {
-                originalDisplay = originalWord;
-            }
-
-            boolean inScope = false;
-            List<Object> fieldStatsList = (List<Object>) originalWordInfo.getOrDefault(FIELD_STATS, null);
-            if (fieldStatsList != null) {
-                for (Object fieldStats : fieldStatsList) {
-                    Map<String, Object> fieldStatsData = (Map<String, Object>) fieldStats;
-                    String typeName = (String) fieldStatsData.get(FIELD_TYPE_NAME);
-                    String fieldName = (String) fieldStatsData.get(FIELD_FIELD_NAME);
-
-                    for (String queryType : taskContext.queryTypes) {
-                        if (!StringUtils.equals(typeName, queryType)) {
-                            continue;
-                        }
+                boolean inScope = false;
+                List<Object> fieldStatsList = (List<Object>) originalWordInfo.getOrDefault(FIELD_STATS, null);
+                if (fieldStatsList != null) {
+                    for (Object fieldStats : fieldStatsList) {
+                        Map<String, Object> fieldStatsData = (Map<String, Object>) fieldStats;
+                        String fieldName = (String) fieldStatsData.get(FIELD_FIELD_NAME);
 
                         for (String queryField : taskContext.queryFields) {
                             if (StringUtils.equals(fieldName, queryField)) {
@@ -493,63 +463,50 @@ public class SpellSuggestionsBuilder {
                         }
                     }
                 }
-            }
 
-            if (!inScope) {
-                continue;
-            }
-
-            if (StringUtils.equals(originalDisplay, suggestedWord)) {
-                continue;
-            }
-
-            Suggestion.MatchStats originalWordStats = currentStats;
-            if (bestStats != null
-                    && bestStats.getMatchLevel().getLevel() <= MatchLevel.Phonetic.getLevel()
-                    && bestStats.getEditDistance() >= currentStats.getEditDistance()
-                    && bestStats.getScore() > currentStats.getScore()) {
-                // calculate current stats
-                originalWordStats = buildCandidateStats(inputWord, suggestedWord, originalDisplay, 0);
-
-                if (originalWordStats.getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
-                    // 5 edit distance is too high, isn't it
-                    if (highEditDistance(originalWordStats, inputWord, suggestedWord)) {
-                        continue;
+                if (!inScope) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Not adding {} ({}) as not in scope", originalWord, originalDisplay);
                     }
 
-                    if (!goodSuggestion(bestStats, previousStats, originalWordStats, inputWordLength)) {
-                        continue;
-                    }
+                    continue;
                 }
-            } else {
-                // TODO: change the match type to phonetic edge gram...
-            }
 
-            // we count similarity with edgeGram
+                // we count similarity with edgeGram
+                addSuggestion(new Suggestion(tokenType,
+                                originalWord,
+                                matchedWord,
+                                originalDisplay,
+                                matchStats,
+                                originalWordWeight,
+                                originalWordCount),
+                        suggestionMap);
+            }
+        } else {
             addSuggestion(new Suggestion(tokenType,
-                            originalWord,
-                            suggestedWord,
-                            originalDisplay,
-                            originalWordStats,
-                            originalWordWeight,
-                            originalWordCount),
+                            matchedWord,
+                            matchedWord,
+                            display,
+                            matchStats,
+                            totalWeight,
+                            totalCount),
                     suggestionMap);
         }
     }
 
-    private Suggestion.MatchStats buildCandidateStats(String inputWord, String matchedWord, String suggestedWord, float score) {
+    private Suggestion.MatchStats buildCandidateStats(String inputWord, String matchedWord, String suggestedWord, float score, List<Object> suggestedWordEncodings) {
         int distance = 0;
         int similarity = 0;
 
         MatchLevel matchLevel;
         if (StringUtils.equals(inputWord, matchedWord)) {
-            if (matchedWord.length() < suggestedWord.length()) {
+            if (!StringUtils.equals(matchedWord, suggestedWord)) {
                 matchLevel = MatchLevel.EdgeGram;
             } else {
                 matchLevel = MatchLevel.Exact;
             }
         } else {
-            if (matchedWord.length() < suggestedWord.length()) {
+            if (!StringUtils.equals(matchedWord, suggestedWord)) {
                 matchLevel = MatchLevel.EdgeGramPhonetic;
             } else {
                 matchLevel = MatchLevel.Phonetic;
@@ -561,6 +518,23 @@ public class SpellSuggestionsBuilder {
             // we select the word with proper edit distance
             distance = EditDistanceUtils.getDamerauLevenshteinDistance(inputWord, suggestedWord);
 //            similarity = EditDistanceUtils.getFuzzyDistance(inputWord, suggestedWord, Locale.ENGLISH);
+
+            if (suggestedWordEncodings != null) {
+                Set<String> inputWordEncodings = encodingsBuilder.encodings(inputWord, StopWords.contains(inputWord));
+
+                if (inputWordEncodings != null) {
+                    int totalEncodings = suggestedWordEncodings.size() + inputWordEncodings.size();
+
+                    int encodingMatches = 0;
+                    for (Object e : suggestedWordEncodings) {
+                        if (inputWordEncodings.contains(e)) {
+                            encodingMatches++;
+                        }
+                    }
+
+                    score = 2.0f * encodingMatches / totalEncodings;
+                }
+            }
         }
 
 //        double jwDistance = StringUtils.getJaroWinklerDistance(inputWord, suggestedWord);
@@ -603,8 +577,6 @@ public class SpellSuggestionsBuilder {
 
             return defaultValue;
         }
-
-//        throw new IllegalArgumentException("Field value not found for: " + field);
     }
 
     @SuppressWarnings("unchecked")
@@ -615,13 +587,13 @@ public class SpellSuggestionsBuilder {
         } else {
             return (List<Object>) searchHit.getSource().get(field);
         }
-
-//        throw new IllegalArgumentException("Field values not found for: " + field);
     }
 
     @SuppressWarnings("unchecked")
     private Set<Suggestion> wordSuggestions(TaskContext taskContext, String inputWord, boolean compoundWord, SearchResponse searchResponse, boolean ignorePrefixSuggestions) {
-        logger.info("~~~~~~~~~~~~~~~~ building word suggestions for: {} = {}", inputWord, searchResponse);
+        if (logger.isDebugEnabled()) {
+            logger.debug("~~~~~~~~~~~~~~~~ building word suggestions for: {} = {}", inputWord, searchResponse);
+        }
 
         if (searchResponse == null || searchResponse.getHits() == null || searchResponse.getHits().getHits() == null) {
             return null;
@@ -637,7 +609,9 @@ public class SpellSuggestionsBuilder {
 
         Suggestion.MatchStats bestCandidateStats = bestCandidateStats(candidateStatsArray);
 
-        logger.info("Best candidate stats for word: {} = {}", inputWord, bestCandidateStats);
+        if (logger.isDebugEnabled()) {
+            logger.debug("Best candidate stats for word: {} = {}", inputWord, bestCandidateStats);
+        }
 
         for (int i = 0; i < hitsCount; i++) {
             SearchHit searchHit = searchResponse.getHits().getHits()[i];
@@ -667,7 +641,6 @@ public class SpellSuggestionsBuilder {
 
             buildSuggestion(taskContext,
                     bestCandidateStats,
-                    i > 0 ? candidateStatsArray[i - 1] : null,
                     candidateStatsArray[i],
                     searchHit,
                     inputWord,
@@ -694,8 +667,10 @@ public class SpellSuggestionsBuilder {
 
             String matchedWord = fieldValue(searchHit, FIELD_WORD, null);
 
+            List<Object> suggestedWordEncodings = fieldValues(searchHit, FIELD_ENCODINGS);
+
             // check for exact suggestion
-            candidateStats[i] = buildCandidateStats(inputWord, matchedWord, matchedWord, searchHit.score());
+            candidateStats[i] = buildCandidateStats(inputWord, matchedWord, matchedWord, searchHit.score(), suggestedWordEncodings);
         }
 
         return candidateStats;
@@ -718,27 +693,61 @@ public class SpellSuggestionsBuilder {
 
         SortedSet<Suggestion> suggestions = new TreeSet<>();
 
-        boolean hasSynonyms = false;
-        String[] synonymList = standardSynonyms.get(word);
-        if (synonymList != null) {
-
-            for (String synonym : synonymList) {
-                // TODO: have special type to capture synonyms
-                suggestions.add(new Suggestion(Suggestion.TokenType.Uni, synonym, synonym, synonym, /*MatchLevel.Synonym,*/ null, 0, 0));
-                hasSynonyms = true;
-            }
-        }
+        boolean hasSynonyms = addSynonyms(word, suggestions);
 
         for (Suggestion suggestion : suggestionMap.values()) {
-//            if ((hasExactMatch || hasEdgeGramMatch) && suggestion.getMatchLevel().getLevel() > EdgeGram.getLevel()) {
-//                continue;
-//            }
-//
-//            if (hasSynonyms || hasPhoneticMatch && suggestion.getMatchLevel().getLevel() > MatchLevel.Phonetic.getLevel()) {
-//                continue;
-//            }
+            // TODO: is pruning appropriate
+            if ((hasExactMatch || hasEdgeGramMatch) && suggestion.getMatchStats().getMatchLevel().getLevel() > EdgeGram.getLevel()) {
+                continue;
+            }
+
+            if (hasSynonyms || hasPhoneticMatch && suggestion.getMatchStats().getMatchLevel().getLevel() > MatchLevel.Phonetic.getLevel()) {
+                continue;
+            }
 
             suggestions.add(suggestion);
+        }
+
+        // from the final left suggestions
+        boolean edgeGram = false;
+        boolean fullGram = false;
+        if (!hasExactMatch && !hasEdgeGramMatch && !hasSynonyms && hasPhoneticMatch) {
+            // find out if we have mix of edgeGram and normal suggestions
+            for (Suggestion suggestion : suggestions) {
+                edgeGram = edgeGram || suggestion.isEdgeGram();
+                fullGram = fullGram || !suggestion.isEdgeGram();
+            }
+
+            // we have a mix
+            if (edgeGram && fullGram) {
+                SortedSet<Suggestion> recomputedSuggestions = new TreeSet<>();
+                for (Suggestion suggestion : suggestions) {
+                    if (!suggestion.isEdgeGram()) {
+                        recomputedSuggestions.add(suggestion);
+                    } else {
+                        Suggestion.MatchStats recomputedMatchStats = buildCandidateStats(word, suggestion.getMatch(), suggestion.getSuggestion(), suggestion.getMatchStats().getScore(), null);
+                        suggestion.setMatchStats(recomputedMatchStats);
+                        recomputedSuggestions.add(suggestion);
+                    }
+                }
+
+                Suggestion bestSuggestion = recomputedSuggestions.first();
+
+                int inputWordLength = word.length();
+
+                suggestions = new TreeSet<>();
+
+                // prune
+                for (Suggestion suggestion : recomputedSuggestions) {
+                    if (highEditDistance(suggestion.getMatchStats(), word, suggestion.getSuggestion())) {
+                        suggestion.setIgnore(true);
+                    } else if (!goodSuggestion(bestSuggestion.getMatchStats(), suggestion.getMatchStats(), inputWordLength)) {
+                        suggestion.setIgnore(true);
+                    } else {
+                        suggestions.add(suggestion);
+                    }
+                }
+            }
         }
 
         if (suggestions.size() > 0 && suggestions.first().getMatchStats().getMatchLevel() == EdgeGramPhonetic && suggestions.first().getTokenType() == Suggestion.TokenType.Uni) {
@@ -755,15 +764,33 @@ public class SpellSuggestionsBuilder {
         return suggestions;
     }
 
+    private boolean addSynonyms(String word, SortedSet<Suggestion> suggestions) {
+        boolean hasSynonyms = false;
+        String[] synonymList = standardSynonyms.get(word);
+        if (synonymList != null) {
+
+            for (String synonym : synonymList) {
+                Suggestion.MatchStats matchStats = new Suggestion.MatchStats(MatchLevel.Synonym, 0, 0, 0, 0, 1.0f);
+                suggestions.add(new Suggestion(Suggestion.TokenType.Uni, synonym, synonym, synonym, matchStats, 0, 0));
+                hasSynonyms = true;
+            }
+        }
+        return hasSynonyms;
+    }
+
     private void addSuggestion(Suggestion suggestion, Map<String, Suggestion> suggestionMap) {
-        logger.info("Adding suggestion: {}", suggestion);
+        if (logger.isDebugEnabled()) {
+            logger.debug("Adding suggestion: {}", suggestion);
+        }
 
         String key = suggestion.getSuggestion();
         if (suggestionMap.containsKey(key)) {
             Suggestion existingSuggestion = suggestionMap.get(key);
             int ret = suggestion.compareTo(existingSuggestion);
             if (ret >= 0) {
-                logger.debug("+++++++++++++++++++ Not adding suggestion {} as better {}", suggestion, existingSuggestion);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("+++++++++++++++++++ Not adding suggestion {} as better {}", suggestion, existingSuggestion);
+                }
                 return;
             }
         }

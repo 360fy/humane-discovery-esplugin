@@ -1,5 +1,6 @@
 package io.threesixtyfy.humaneDiscovery.didYouMean.commons;
 
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
@@ -13,7 +14,9 @@ public class Suggestion implements Comparable<Suggestion> {
     private final double weight;
     private final int count;
 
-    private final MatchStats matchStats;
+    private MatchStats matchStats;
+
+    private final boolean edgeGram;
 
     private boolean ignore = false;
 
@@ -25,6 +28,7 @@ public class Suggestion implements Comparable<Suggestion> {
         this.matchStats = matchStats;
         this.weight = weight;
         this.count = count;
+        this.edgeGram = !StringUtils.equals(suggestion, match);
     }
 
     public TokenType getTokenType() {
@@ -47,6 +51,10 @@ public class Suggestion implements Comparable<Suggestion> {
         return matchStats;
     }
 
+    public void setMatchStats(MatchStats matchStats) {
+        this.matchStats = matchStats;
+    }
+
     public double getWeight() {
         return weight;
     }
@@ -61,6 +69,10 @@ public class Suggestion implements Comparable<Suggestion> {
 
     public void setIgnore(boolean ignore) {
         this.ignore = ignore;
+    }
+
+    public boolean isEdgeGram() {
+        return edgeGram;
     }
 
     @Override
@@ -142,12 +154,12 @@ public class Suggestion implements Comparable<Suggestion> {
     }
 
     public static class MatchStats implements Comparable<MatchStats> {
-        MatchLevel matchLevel;
-        int editDistance;
-        int similarity;
-        double jwDistance;
-        double lDistance;
-        float score;
+        final MatchLevel matchLevel;
+        final int editDistance;
+        final int similarity;
+        final double jwDistance;
+        final double lDistance;
+        final float score;
 
         public MatchStats(MatchLevel matchLevel, int editDistance, int similarity, double jwDistance, double lDistance, float score) {
             this.matchLevel = matchLevel;

@@ -1,4 +1,4 @@
-package io.threesixtyfy.humaneDiscovery.didYouMean.action;
+package io.threesixtyfy.humaneDiscovery.intent.action;
 
 import io.threesixtyfy.humaneDiscovery.commons.action.BaseQueryResult;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -8,14 +8,14 @@ import org.elasticsearch.common.xcontent.XContentBuilderString;
 
 import java.io.IOException;
 
-public class DidYouMeanResult extends BaseQueryResult {
+public class IntentResult extends BaseQueryResult {
 
     private String result;
 
-    public DidYouMeanResult() {
+    public IntentResult() {
     }
 
-    public DidYouMeanResult(String result) {
+    public IntentResult(String result) {
         this.result = result;
     }
 
