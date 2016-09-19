@@ -12,9 +12,10 @@ import org.elasticsearch.index.query.QueryParser;
 import org.elasticsearch.index.query.QueryParsingException;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
 public class MultiFieldHumaneQueryParser implements QueryParser {
 
@@ -64,7 +65,7 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
         Object queryText = null;
 
         String intentIndex = null;
-        String[] intentFields = null;
+        Set<String> intentFields = new HashSet<>();
 
         QueryField previousField = null;
 
@@ -134,18 +135,14 @@ public class MultiFieldHumaneQueryParser implements QueryParser {
             } else if (TAG_INTENT_FIELDS.equals(currentFieldName)) {
                 if (token == XContentParser.Token.START_ARRAY) {
                     // parse fields
-                    List<String> intentFieldList = new ArrayList<>();
-
                     while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
                         if (token.isValue()) {
                             // we have simple field
-                            intentFieldList.add(parser.text());
+                            intentFields.add(parser.text());
                         } else {
                             throw new QueryParsingException(parseContext, "intent field must be simple field name but got [" + token + "]");
                         }
                     }
-
-                    intentFields = intentFieldList.toArray(new String[intentFieldList.size()]);
                 } else {
                     throw new QueryParsingException(parseContext, "intentFields must be array of fields, but got [" + token + "]");
                 }

@@ -1,13 +1,14 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.MatchLevel;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Suggestion;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionSet;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.SuggestionsBuilder;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.TokensBuilder;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.Conjunct;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.Disjunct;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.MatchLevel;
+import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.Suggestion;
+import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionSet;
+import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.TokensBuilder;
+import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.TokenType;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.search.BooleanClause;
@@ -43,6 +44,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class HumaneQuery extends Query {
     public static final float DEFAULT_TIE_BREAKER_MULTIPLIER = 1.0f;
@@ -60,7 +62,7 @@ public class HumaneQuery extends Query {
     public static final String SEARCH_QUERY_STORE_SUFFIX = SEARCH_QUERY_STORE_PREFIX;
     public static final float EDIT_DISTANCE_NORMALIZE_FACTOR = 10.0f;
 
-    public static final String[] INTENT_TYPES = new String[]{"intent"};
+    public static final Map<String, SuggestionSet> EmptySuggestionMap = new HashMap<>();
 
     private final ESLogger logger = Loggers.getLogger(HumaneQuery.class);
 
@@ -85,7 +87,7 @@ public class HumaneQuery extends Query {
         this.parseContext = parseContext;
     }
 
-    public Query parse(Client client, QueryField field, Object value, String intentIndex, String[] intentFields) throws IOException {
+    public Query parse(Client client, QueryField field, Object value, String intentIndex, Set<String> intentFields) throws IOException {
         try {
 
             QueryField[] queryFields = {field};
@@ -97,7 +99,7 @@ public class HumaneQuery extends Query {
         }
     }
 
-    public Query parse(Client client, QueryField[] fields, Object value, String intentIndex, String[] intentFields) throws IOException {
+    public Query parse(Client client, QueryField[] fields, Object value, String intentIndex, Set<String> intentFields) throws IOException {
         try {
             return humaneQuery(client, fields, value.toString(), intentIndex, intentFields);
         } catch (Throwable t) {
@@ -202,16 +204,16 @@ public class HumaneQuery extends Query {
         if (!noFuzzy && suggestions != null) {
             for (Suggestion suggestion : suggestions) {
                 if (suggestion.isIgnore()
-                        || suggestion.getTokenType() == Suggestion.TokenType.Uni && (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact || suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGram)) {
+                        || suggestion.getInputTokenType() == TokenType.Uni && (suggestion.getMatchStats().getMatchLevel() == MatchLevel.Exact || suggestion.getMatchStats().getMatchLevel() == MatchLevel.EdgeGram)) {
                     continue;
                 }
 
-                boolean shingle = suggestion.getTokenType() == Suggestion.TokenType.Bi || suggestion.getTokenType() == Suggestion.TokenType.ShingleBi;
+                boolean shingle = suggestion.getMatchTokenType() == TokenType.Bi;
 
                 // only if there is at least one bi token type we add
                 if (!addedShingleQueries && shingle) {
                     fieldQueryBuilder.add(buildQuery(field, StandardQueryAnalyzerName, text, true,
-                            (suggestion.getTokenType() == Suggestion.TokenType.ShingleBi ? SHINGLE_EXACT_MATCH_BOOST : EXACT_MATCH_BOOST) * field.boost), BooleanClause.Occur.SHOULD);
+                            (suggestion.getMatchTokenType() == TokenType.Bi ? SHINGLE_EXACT_MATCH_BOOST : EXACT_MATCH_BOOST) * field.boost), BooleanClause.Occur.SHOULD);
 
                     addedShingleQueries = true;
                 }
@@ -336,7 +338,7 @@ public class HumaneQuery extends Query {
     }
 
     @SuppressWarnings("unchecked")
-    protected Query humaneQuery(Client client, QueryField[] queryFields, String queryText, String intentIndex, String[] intentFields) throws IOException {
+    protected Query humaneQuery(Client client, QueryField[] queryFields, String queryText, String intentIndex, Set<String> intentFields) throws IOException {
 
         long startTime = 0;
 
@@ -364,7 +366,7 @@ public class HumaneQuery extends Query {
 
         int numTokens = tokens.size();
 
-        if (numTokens == 0 || numTokens >= 6) {
+        if (numTokens == 0) {
             return null;
         }
 
@@ -382,11 +384,8 @@ public class HumaneQuery extends Query {
                 startTime = System.currentTimeMillis();
             }
 
-            // EXPERIMENTAL
-//            intentBuilder.buildIntent(client, tokens);
-
             Map<String, Conjunct> conjunctMap = new HashMap<>();
-            Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap, 3);
+            Disjunct[] disjuncts = disjunctsBuilder.build(tokens, conjunctMap, numTokens < 6 ? 3 : 1);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("For Index/Type: {}/{} and tokens: {}, got disjuncts: {} in {}ms", indexName, queryTypes, tokens, Arrays.toString(disjuncts), (System.currentTimeMillis() - startTime));
@@ -394,25 +393,23 @@ public class HumaneQuery extends Query {
                 startTime = System.currentTimeMillis();
             }
 
-            String suggestionIndex;
-            if (intentFields == null || intentFields.length == 0) {
-                suggestionIndex = indexName + ":did_you_mean_store";
-            } else {
-                suggestionIndex = intentIndex + ":did_you_mean_store";
-            }
+            Map<String, SuggestionSet> suggestionsMap = EmptySuggestionMap;
+            if (numTokens < 6) {
+                String suggestionIndex;
+                if (intentFields == null || intentFields.size() == 0) {
+                    suggestionIndex = indexName + ":did_you_mean_store";
+                } else {
+                    suggestionIndex = intentIndex + ":did_you_mean_store";
+                }
 
-            final Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(client,
-                    conjunctMap.values(),
-                    new String[]{suggestionIndex},
-                    INTENT_TYPES,
-                    intentFields);
+                suggestionsMap = suggestionsBuilder.fetchSuggestions(client,
+                        conjunctMap.values(),
+                        new String[]{suggestionIndex},
+                        null);
+            }
 
             if (logger.isDebugEnabled()) {
                 logger.debug("For Index/Type: {}/{}, query: {}, tokens: {}, disjuncts: {}, got suggestions: {} in {}ms", indexName, queryTypes, queryText, tokens, Arrays.toString(disjuncts), suggestionsMap, (System.currentTimeMillis() - startTime));
-            }
-
-            if (suggestionsMap == null || suggestionsMap.size() == 0) {
-                return null;
             }
 
             List<Query> queries = new ArrayList<>();
@@ -451,6 +448,12 @@ public class HumaneQuery extends Query {
 
                             conjunctQueries.add(termQuery);
 
+                            clauseCount++;
+                            shouldClauseCount++;
+                        } else {
+                            Query termQuery = this.multiFieldQuery(indexName, queryFields, token, null, false);
+
+                            conjunctQueries.add(termQuery);
                             clauseCount++;
                             shouldClauseCount++;
                         }

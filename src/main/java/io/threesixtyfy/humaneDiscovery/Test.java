@@ -1,8 +1,8 @@
 package io.threesixtyfy.humaneDiscovery;
 
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Conjunct;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.Disjunct;
-import io.threesixtyfy.humaneDiscovery.didYouMean.commons.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.Conjunct;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.Disjunct;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.DisjunctsBuilder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
