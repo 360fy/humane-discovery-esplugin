@@ -3,6 +3,7 @@ package io.threesixtyfy.humaneDiscovery.query;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.Conjunct;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.Disjunct;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.DefaultSuggestionScope;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.Suggestion;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionSet;
@@ -41,10 +42,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class HumaneQuery extends Query {
     public static final float DEFAULT_TIE_BREAKER_MULTIPLIER = 1.0f;
@@ -366,7 +369,7 @@ public class HumaneQuery extends Query {
 
         int numTokens = tokens.size();
 
-        if (numTokens == 0) {
+        if (numTokens == 0 || numTokens >= 8) {
             return null;
         }
 
@@ -396,16 +399,19 @@ public class HumaneQuery extends Query {
             Map<String, SuggestionSet> suggestionsMap = EmptySuggestionMap;
             if (numTokens < 6) {
                 String suggestionIndex;
+                Set<DefaultSuggestionScope> suggestionScopes = null;
                 if (intentFields == null || intentFields.size() == 0) {
                     suggestionIndex = indexName + ":did_you_mean_store";
+                    suggestionScopes = new HashSet<>();
                 } else {
                     suggestionIndex = intentIndex + ":did_you_mean_store";
+                    suggestionScopes = intentFields.stream().map(DefaultSuggestionScope::new).collect(Collectors.toSet());
                 }
 
                 suggestionsMap = suggestionsBuilder.fetchSuggestions(client,
                         conjunctMap.values(),
                         new String[]{suggestionIndex},
-                        null);
+                        suggestionScopes);
             }
 
             if (logger.isDebugEnabled()) {
@@ -433,7 +439,7 @@ public class HumaneQuery extends Query {
                         // we form normal query
                         String token = conjunct.getTokens().get(0);
                         String key = conjunct.getKey();
-                        SuggestionSet suggestionSet = suggestionsMap.get(key);
+                        SuggestionSet suggestionSet = suggestionsMap == null ? null : suggestionsMap.get(key);
 
                         if (suggestionSet != null && (suggestionSet.getSuggestions() != null || suggestionSet.isNumber() || suggestionSet.isStopWord())) {
                             Query termQuery = this.multiFieldQuery(indexName, queryFields, token, /*false, numTokens,*/ suggestionSet.getSuggestions(), suggestionSet.isStopWord());

@@ -31,9 +31,6 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -80,27 +77,27 @@ public class SpellSuggestionsBuilder {
 
     private final ESLogger logger = Loggers.getLogger(SpellSuggestionsBuilder.class);
 
-    private final CompletableFuture<SuggestionSet> NumberSuggestion = new CompletableFuture<>();
+    private final SuggestionSet NumberSuggestion = new SuggestionSet(true, false, null);
 
-    private final CompletableFuture<SuggestionSet> SingleLetterSuggestion = new CompletableFuture<>();
+    private final SuggestionSet SingleLetterSuggestion = new SuggestionSet(false, false, new Suggestion[0]);
 
     private StandardSynonyms standardSynonyms = new StandardSynonyms();
 
     private final EncodingsBuilder encodingsBuilder = new EncodingsBuilder();
 
     // TODO: expire on event only
-    private final Cache<String, CompletableFuture<SuggestionSet>> CachedCompletableResponses = CacheBuilder
+    private final Cache<String, SuggestionSet> CachedSuggestionSets = CacheBuilder
             .newBuilder()
             .maximumSize(1000)
             .expireAfterAccess(30, TimeUnit.SECONDS)
             .build();
 
-    private final ExecutorService futureExecutorService = new ThreadPoolExecutor(20, 20, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(200));
+//    private final ExecutorService futureExecutorService = new ThreadPoolExecutor(32, 32, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>(256));
 
     public SpellSuggestionsBuilder() {
-        NumberSuggestion.complete(new SuggestionSet(true, false, null));
+//        NumberSuggestion.complete(new SuggestionSet(true, false, null));
 
-        SingleLetterSuggestion.complete(new SuggestionSet(false, false, new Suggestion[0]));
+//        SingleLetterSuggestion.complete(new SuggestionSet(false, false, new Suggestion[0]));
     }
 
     // if there are other suggestions, then ignore the one with very low count
@@ -119,17 +116,17 @@ public class SpellSuggestionsBuilder {
         return null;
     }
 
-    private CompletableFuture<SuggestionSet> store(TaskContext taskContext, String key, CompletableFuture<SuggestionSet> future) {
+    private SuggestionSet store(TaskContext taskContext, String key, SuggestionSet future) {
         taskContext.queryKeys.add(key);
-        taskContext.suggestionResponses.add(future);
+//        taskContext.suggestionResponses.add(suggestionSet);
 
         return future;
     }
 
-    private CompletableFuture<SuggestionSet> getOrBuildFuture(TaskContext taskContext, String key, String word, Function<Boolean, CompletableFuture<SuggestionSet>> futureBuilder) throws ExecutionException {
+    private SuggestionSet getOrBuildSuggestionSet(TaskContext taskContext, String key, String word, Function<Boolean, SuggestionSet> futureBuilder) throws ExecutionException {
         boolean number = NumberUtils.isNumber(word);
 
-        // we do not store these in CachedCompletableResponses... as re-calculating them would not be that costly
+        // we do not store these in CachedSuggestionSets... as re-calculating them would not be that costly
         if (number) {
             return store(taskContext, key, NumberSuggestion);
         }
@@ -141,7 +138,7 @@ public class SpellSuggestionsBuilder {
         }
 
         return store(taskContext, key,
-                CachedCompletableResponses.get(key(taskContext, key),
+                CachedSuggestionSets.get(key(taskContext, key),
                         () -> futureBuilder.apply(stopWord)));
     }
 
@@ -156,41 +153,23 @@ public class SpellSuggestionsBuilder {
         QueryBuilder[] queryBuilders = queryBuilderHolder.queryBuilders;
         Set<String> encodings = queryBuilderHolder.encodings;
 
-        List<CompletableFuture<SearchResponse>> searchResponseFutures = new ArrayList<>(queryBuilders.length);
+        List<SearchResponse> searchResponses = new ArrayList<>(queryBuilders.length);
 
         for (QueryBuilder queryBuilder : queryBuilders) {
-            CompletableFuture<SearchResponse> searchResponseFuture = CompletableFuture
-                    .supplyAsync(
-                            () ->
-                                    taskContext.client.prepareSearch(taskContext.indices)
-                                            .setSize(25)
-                                            .setQuery(queryBuilder)
-                                            .setFetchSource(FETCH_SOURCES, null)
-                                            .execute()
-                                            .actionGet(1000, TimeUnit.MILLISECONDS),
-                            futureExecutorService)
-                    .exceptionally(error -> {
-                        logger.error("Error in executing future for key: {}, word: {} indices: {}", error, key, word, taskContext.indices);
-                        return null;
-                    });
-
-            searchResponseFutures.add(searchResponseFuture);
+            SearchResponse searchResponse = taskContext.client.prepareSearch(taskContext.indices)
+                    .setSize(15)
+                    .setQuery(queryBuilder)
+                    .setFetchSource(FETCH_SOURCES, null)
+                    .execute()
+                    .actionGet(400, TimeUnit.MILLISECONDS);
+            searchResponses.add(searchResponse);
         }
-
-        // wait for all to finish
-        CompletableFuture.allOf(searchResponseFutures.toArray(new CompletableFuture[searchResponseFutures.size()])).join();
 
         List<SearchHit> searchHits = new ArrayList<>();
 
-        for (CompletableFuture<SearchResponse> searchResponseFuture : searchResponseFutures) {
-            try {
-                SearchResponse searchResponse = searchResponseFuture.get();
-
-                if (hasResults(searchResponse)) {
-                    Collections.addAll(searchHits, searchResponse.getHits().getHits());
-                }
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
+        for (SearchResponse searchResponse : searchResponses) {
+            if (hasResults(searchResponse)) {
+                Collections.addAll(searchHits, searchResponse.getHits().getHits());
             }
         }
 
@@ -199,35 +178,27 @@ public class SpellSuggestionsBuilder {
         return new SuggestionSet(false, stopWord, suggestions == null ? null : suggestions.toArray(new Suggestion[suggestions.size()]));
     }
 
-    private CompletableFuture<SuggestionSet> future(final TaskContext taskContext, String key, String word, TokenType inputTokenType, boolean stopWord, Supplier<QueryBuilderHolder> queryBuilders) {
+    private SuggestionSet suggestionSet(final TaskContext taskContext, String key, String word, TokenType inputTokenType, boolean stopWord, Supplier<QueryBuilderHolder> queryBuilders) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Building future for key: {}, word: {} indices: {}, query: {}", key, word, taskContext.indices);
+            logger.debug("Building suggestionSet for key: {}, word: {} indices: {}, query: {}", key, word, taskContext.indices);
         }
 
-        return CompletableFuture
-                .supplyAsync(
-                        () -> taskContext.client.prepareSearch(taskContext.indices)
-                                .setSize(2)
-                                .setTypes(UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, BIGRAM_DID_YOU_MEAN_INDEX_TYPE)
-                                .setQuery(buildWordQuery(taskContext, word))
-                                .setFetchSource(FETCH_SOURCES, null)
-                                .execute()
-                                .actionGet(1000, TimeUnit.MILLISECONDS),
-                        futureExecutorService)
-                .exceptionally(error -> {
-                    logger.error("Error in executing future for key: {}, word: {} indices: {}", error, key, word, taskContext.indices);
-                    return null;
-                })
-                .thenApply(searchResponse -> {
-                    if (!hasResults(searchResponse)) {
-                        // we build with phonetic way
-                        return phoneticSuggestions(taskContext, key, word, inputTokenType, stopWord, queryBuilders);
-                    }
+        SearchResponse searchResponse = taskContext.client.prepareSearch(taskContext.indices)
+                .setSize(2)
+                .setTypes(UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, BIGRAM_DID_YOU_MEAN_INDEX_TYPE)
+                .setQuery(buildWordQuery(taskContext, word))
+                .setFetchSource(FETCH_SOURCES, null)
+                .execute()
+                .actionGet(200, TimeUnit.MILLISECONDS);
 
-                    Set<Suggestion> suggestions = wordSuggestions(taskContext, word, inputTokenType, searchResponse.getHits().getHits(), null);
+        if (!hasResults(searchResponse)) {
+            // we build with phonetic way
+            return phoneticSuggestions(taskContext, key, word, inputTokenType, stopWord, queryBuilders);
+        }
 
-                    return new SuggestionSet(false, stopWord, suggestions == null ? null : suggestions.toArray(new Suggestion[suggestions.size()]));
-                });
+        Set<Suggestion> suggestions = wordSuggestions(taskContext, word, inputTokenType, searchResponse.getHits().getHits(), null);
+
+        return new SuggestionSet(false, stopWord, suggestions == null ? null : suggestions.toArray(new Suggestion[suggestions.size()]));
     }
 
     private QueryBuilder buildSuggestionScope(TaskContext taskContext) {
@@ -241,11 +212,11 @@ public class SpellSuggestionsBuilder {
         return scopeQueryBuilder;
     }
 
-    private void unigramWordMatch(TaskContext taskContext, Conjunct conjunct) throws ExecutionException {
+    private SuggestionSet unigramWordMatch(TaskContext taskContext, Conjunct conjunct) throws ExecutionException {
         String key = conjunct.getKey();
         String word = conjunct.getTokens().get(0);
 
-        getOrBuildFuture(taskContext, key, word, (stopWord) -> future(taskContext, key, word, TokenType.Uni, stopWord,
+        return getOrBuildSuggestionSet(taskContext, key, word, (stopWord) -> suggestionSet(taskContext, key, word, TokenType.Uni, stopWord,
                 () -> {
                     Set<String> encodings = encodingsBuilder.encodings(word, stopWord);
 
@@ -263,11 +234,11 @@ public class SpellSuggestionsBuilder {
     }
 
     @SuppressWarnings("unchecked")
-    private void compoundWordMatch(TaskContext taskContext, Conjunct conjunct) throws ExecutionException {
+    private SuggestionSet compoundWordMatch(TaskContext taskContext, Conjunct conjunct) throws ExecutionException {
         String word = StringUtils.join(conjunct.getTokens(), "");
         String key = conjunct.getKey();
 
-        getOrBuildFuture(taskContext, key, word, (stopWord) -> future(taskContext, key, word, TokenType.Bi, stopWord,
+        return getOrBuildSuggestionSet(taskContext, key, word, (stopWord) -> suggestionSet(taskContext, key, word, TokenType.Bi, stopWord,
                 () -> {
                     Set<String> encodings = encodingsBuilder.encodings(word, stopWord);
 
@@ -315,19 +286,14 @@ public class SpellSuggestionsBuilder {
 
         long startTime = System.currentTimeMillis();
 
-//        int size = conjuncts.size();
-//        int i = 1;
+        List<SuggestionSet> suggestionSets = new ArrayList<>(conjuncts.size());
         for (Conjunct conjunct : conjuncts) {
             if (conjunct.getLength() == 1) {
-                unigramWordMatch(taskContext, conjunct /*, i < size*/);
+                suggestionSets.add(unigramWordMatch(taskContext, conjunct));
             } else {
-                compoundWordMatch(taskContext, conjunct /*, i < size*/);
+                suggestionSets.add(compoundWordMatch(taskContext, conjunct));
             }
-
-//            i++;
         }
-
-        CompletableFuture<List<SuggestionSet>> allResponses = sequence(taskContext.suggestionResponses);
 
         if (logger.isDebugEnabled()) {
             logger.debug("For conjuncts: {} and indices: {} build completable search responses: {} in {}ms", conjuncts, taskContext.indices, taskContext.suggestionResponses, (System.currentTimeMillis() - startTime));
@@ -335,17 +301,13 @@ public class SpellSuggestionsBuilder {
 
         startTime = System.currentTimeMillis();
 
-        Map<String, SuggestionSet> suggestionsMap = allResponses.thenApply(responses -> {
-            Map<String, SuggestionSet> map = new HashMap<>();
+        Map<String, SuggestionSet> suggestionsMap = new HashMap<>();
 
-            int index = 0;
-            for (SuggestionSet suggestions : responses) {
-                map.put(taskContext.queryKeys.get(index), suggestions);
-                index++;
-            }
-
-            return map;
-        }).get();
+        int index = 0;
+        for (SuggestionSet suggestions : suggestionSets) {
+            suggestionsMap.put(taskContext.queryKeys.get(index), suggestions);
+            index++;
+        }
 
         if (logger.isDebugEnabled()) {
             logger.debug("For conjuncts: {} and indices: {} created suggestions: {} in {}ms", conjuncts, taskContext.indices, suggestionsMap, (System.currentTimeMillis() - startTime));
@@ -367,10 +329,8 @@ public class SpellSuggestionsBuilder {
 
             if (w.startsWith(Constants.GRAM_START_PREFIX)) {
                 termQueryBuilder.boost(GRAM_START_BOOST * (length - GRAM_START_PREFIX_LENGTH));
-//                termQueryBuilder.boost(GRAM_START_BOOST);
             } else if (w.startsWith(Constants.GRAM_END_PREFIX)) {
                 termQueryBuilder.boost(GRAM_END_BOOST * (length - GRAM_END_PREFIX_LENGTH));
-//                termQueryBuilder.boost(GRAM_END_BOOST);
             } else if (w.startsWith(GRAM_PREFIX)) {
                 termQueryBuilder.boost(length - GRAM_PREFIX_LENGTH);
             }
