@@ -1,16 +1,16 @@
 package io.threesixtyfy.humaneDiscovery.api.commons;
 
 import org.elasticsearch.action.ActionResponse;
+import org.elasticsearch.action.ShardOperationFailedException;
 import org.elasticsearch.action.search.ShardSearchFailure;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.StatusToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentBuilderString;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.rest.RestStatus;
-import org.elasticsearch.rest.action.support.RestActions;
+import org.elasticsearch.rest.action.RestActions;
 
 import java.io.IOException;
 
@@ -18,11 +18,15 @@ import static org.elasticsearch.action.search.ShardSearchFailure.readShardSearch
 
 public abstract class BaseQueryResponse<T extends BaseQueryResult> extends ActionResponse implements StatusToXContent {
 
-    private int totalShards = 1;
+    private static final int TOTAL_SHARDS_DEFAULT = 1;
+    private static final int SUCCESSFUL_SHARDS_DEFAULT = 1;
+    private static final ShardOperationFailedException[] SHARD_OPERATION_FAILURES_DEFAULT = ShardSearchFailure.EMPTY_ARRAY;
 
-    private int successfulShards = 1;
+    private int totalShards = TOTAL_SHARDS_DEFAULT;
 
-    private ShardSearchFailure[] shardFailures = ShardSearchFailure.EMPTY_ARRAY;
+    private int successfulShards = SUCCESSFUL_SHARDS_DEFAULT;
+
+    private ShardOperationFailedException[] shardFailures = SHARD_OPERATION_FAILURES_DEFAULT;
 
     private long tookInMillis;
 
@@ -37,7 +41,6 @@ public abstract class BaseQueryResponse<T extends BaseQueryResult> extends Actio
     private float maxScore;
 
     public BaseQueryResponse() {
-//        shardFailures = ShardSearchFailure.EMPTY_ARRAY;
         results = emptyResults();
     }
 
@@ -46,12 +49,16 @@ public abstract class BaseQueryResponse<T extends BaseQueryResult> extends Actio
         this.tookInMillis = tookInMillis;
     }
 
-    public BaseQueryResponse(T[] results, /*int totalShards, int successfulShards, */long tookInMillis/*, ShardSearchFailure[] shardFailures*/) {
+    public BaseQueryResponse(T[] results, long tookInMillis) {
+        this(results, TOTAL_SHARDS_DEFAULT, SUCCESSFUL_SHARDS_DEFAULT, tookInMillis, SHARD_OPERATION_FAILURES_DEFAULT);
+    }
+
+    public BaseQueryResponse(T[] results, int totalShards, int successfulShards, long tookInMillis, ShardOperationFailedException[] shardFailures) {
         this.results = results;
-//        this.totalShards = totalShards;
-//        this.successfulShards = successfulShards;
+        this.totalShards = totalShards;
+        this.successfulShards = successfulShards;
         this.tookInMillis = tookInMillis;
-//        this.shardFailures = shardFailures;
+        this.shardFailures = shardFailures;
         this.totalResults = results == null ? 0 : results.length;
     }
 
@@ -121,7 +128,7 @@ public abstract class BaseQueryResponse<T extends BaseQueryResult> extends Actio
     /**
      * The failures that occurred during the search.
      */
-    public ShardSearchFailure[] getShardFailures() {
+    public ShardOperationFailedException[] getShardFailures() {
         return this.shardFailures;
     }
 
@@ -135,15 +142,6 @@ public abstract class BaseQueryResponse<T extends BaseQueryResult> extends Actio
 
     public float getMaxScore() {
         return maxScore;
-    }
-
-    static final class Fields {
-        static final XContentBuilderString TOOK = new XContentBuilderString("took");
-        static final XContentBuilderString TIMED_OUT = new XContentBuilderString("timed_out");
-        static final XContentBuilderString TERMINATED_EARLY = new XContentBuilderString("terminated_early");
-        static final XContentBuilderString RESULTS = new XContentBuilderString("results");
-        static final XContentBuilderString TOTAL = new XContentBuilderString("total");
-        static final XContentBuilderString MAX_SCORE = new XContentBuilderString("max_score");
     }
 
     @Override
@@ -223,7 +221,7 @@ public abstract class BaseQueryResponse<T extends BaseQueryResult> extends Actio
         out.writeVInt(successfulShards);
 
         out.writeVInt(shardFailures.length);
-        for (ShardSearchFailure shardSearchFailure : shardFailures) {
+        for (ShardOperationFailedException shardSearchFailure : shardFailures) {
             shardSearchFailure.writeTo(out);
         }
 
@@ -245,5 +243,14 @@ public abstract class BaseQueryResponse<T extends BaseQueryResult> extends Actio
         } catch (IOException e) {
             return "{ \"error\" : \"" + e.getMessage() + "\"}";
         }
+    }
+
+    private static final class Fields {
+        static final String TOOK = "took";
+        static final String TIMED_OUT = "timed_out";
+        static final String TERMINATED_EARLY = "terminated_early";
+        static final String RESULTS = "results";
+        static final String TOTAL = "total";
+        static final String MAX_SCORE = "max_score";
     }
 }

@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Disjunct {
-    final String key;
-    final Conjunct[] conjuncts;
+    private final String key;
+    private final Conjunct[] conjuncts;
 
     public Disjunct(String key, Conjunct[] conjuncts) {
         this.key = key;

@@ -1,17 +1,24 @@
 package io.threesixtyfy.humaneDiscovery.tokenFilter;
 
 import org.apache.lucene.analysis.TokenStream;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.inject.assistedinject.Assisted;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.index.Index;
+import org.elasticsearch.env.Environment;
+import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
-import org.elasticsearch.index.settings.IndexSettingsService;
 
 public class EdgeGramTokenFilterFactory extends AbstractTokenFilterFactory {
 
-    public static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 2;
-    public static final int DEFAULT_MAX_EDGE_GRAM_SIZE = 20;
+    public static final String NAME = "humane_edgeGram";
+
+    private static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 2;
+    private static final int DEFAULT_MAX_EDGE_GRAM_SIZE = 20;
+
+    private static final String MIN_GRAM_SETTING = "min_gram";
+    private static final String MAX_GRAM_SETTING = "max_gram";
+    private static final String PAYLOAD_SETTING = "payload";
+    private static final String PREFIX_SETTING = "prefix";
+
+    private static final String EDGE_GRAM_PREFIX = "e#";
 
     private final int minGram;
 
@@ -21,14 +28,13 @@ public class EdgeGramTokenFilterFactory extends AbstractTokenFilterFactory {
 
     private final String prefix;
 
-    @Inject
-    public EdgeGramTokenFilterFactory(Index index, IndexSettingsService indexSettingsService, @Assisted String name, @Assisted Settings settings) {
-        super(index, indexSettingsService.getSettings(), name, settings);
+    public EdgeGramTokenFilterFactory(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
+        super(indexSettings, name, settings);
 
-        this.minGram = settings.getAsInt("min_gram", DEFAULT_MIN_EDGE_GRAM_SIZE);
-        this.maxGram = settings.getAsInt("max_gram", DEFAULT_MAX_EDGE_GRAM_SIZE);
-        this.payload = settings.getAsBoolean("payload", false);
-        this.prefix = settings.get("prefix", "e#");
+        this.minGram = settings.getAsInt(MIN_GRAM_SETTING, DEFAULT_MIN_EDGE_GRAM_SIZE);
+        this.maxGram = settings.getAsInt(MAX_GRAM_SETTING, DEFAULT_MAX_EDGE_GRAM_SIZE);
+        this.payload = settings.getAsBoolean(PAYLOAD_SETTING, false);
+        this.prefix = settings.get(PREFIX_SETTING, EDGE_GRAM_PREFIX);
     }
 
     @Override

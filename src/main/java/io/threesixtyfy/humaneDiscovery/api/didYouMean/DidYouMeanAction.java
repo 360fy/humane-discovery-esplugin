@@ -9,7 +9,7 @@ public class DidYouMeanAction extends Action<DidYouMeanRequest, DidYouMeanRespon
 
     public static final String NAME = "indices:data/read/didYouMean";
 
-    protected DidYouMeanAction() {
+    private DidYouMeanAction() {
         super(NAME);
     }
 

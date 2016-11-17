@@ -3,12 +3,12 @@ package io.threesixtyfy.humaneDiscovery.api.didYouMean;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.Conjunct;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.Disjunct;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.DisjunctsBuilder;
+import io.threesixtyfy.humaneDiscovery.core.conjuncts.TokensBuilder;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.Suggestion;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionSet;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionUtils;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder;
-import io.threesixtyfy.humaneDiscovery.core.conjuncts.TokensBuilder;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.TokenType;
 import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.ActionListener;
@@ -16,15 +16,17 @@ import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -53,7 +55,6 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
 
     @Inject
     public TransportDidYouMeanAction(Settings settings,
-                                     String actionName,
                                      ThreadPool threadPool,
                                      TransportService transportService,
                                      ClusterService clusterService,
@@ -61,7 +62,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                                      ActionFilters actionFilters,
                                      IndexNameExpressionResolver indexNameExpressionResolver,
                                      Client client) {
-        super(settings, actionName, threadPool, transportService, actionFilters, indexNameExpressionResolver, DidYouMeanRequest.class);
+        super(settings, DidYouMeanAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, DidYouMeanRequest::new);
 
         this.clusterService = clusterService;
         this.client = client;
@@ -69,7 +70,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
     }
 
     @SuppressWarnings("unchecked")
-    private DidYouMeanResponse buildResponse(List<String> tokens, long startTime, String... didYouMeanIndex) {
+    private DidYouMeanResponse buildResponse(List<String> tokens, long startTime, Index... didYouMeanIndices) {
         if (tokens == null || tokens.size() >= 6) {
             return emptyResponse(startTime);
         }
@@ -81,7 +82,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
             return emptyResponse(startTime);
         }
 
-        Map<String, SuggestionSet> suggestionsMap = null; //suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), didYouMeanIndex);
+        Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(this.client, conjunctMap.values(), indicesToNames(didYouMeanIndices), null);
         if (suggestionsMap == null) {
             return emptyResponse(startTime);
         }
@@ -242,6 +243,17 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
         return emptyResponse(startTime);
     }
 
+    @NotNull
+    private String[] indicesToNames(Index... didYouMeanIndices) {
+        String[] indexNames = new String[didYouMeanIndices.length];
+
+        for (int i = 0; i < didYouMeanIndices.length; i++) {
+            indexNames[i] = didYouMeanIndices[i].getName();
+        }
+
+        return indexNames;
+    }
+
     private float getSuggestionScore(int conjunctTokens, Suggestion suggestion) {
         float suggestionScore = 1.0f;
 
@@ -279,10 +291,10 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
                 try {
                     ClusterState clusterState = clusterService.state();
 
-                    String[] inputIndices = indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest);
+                    Index[] inputIndices = indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest);
 
                     // resolve these too
-                    String[] didYouMeanIndices = indexNameExpressionResolver.concreteIndices(clusterState,
+                    Index[] didYouMeanIndices = indexNameExpressionResolver.concreteIndices(clusterState,
                             didYouMeanRequest.indicesOptions(),
                             Arrays.stream(indexNameExpressionResolver.concreteIndices(clusterState, didYouMeanRequest)).map(value -> value + ":did_you_mean_store").toArray(String[]::new));
 
@@ -303,7 +315,7 @@ public class TransportDidYouMeanAction extends HandledTransportAction<DidYouMean
             }
 
             @Override
-            public void onFailure(Throwable t) {
+            public void onFailure(Exception t) {
                 logger.error("failed to execute didYouMean", t);
                 super.onFailure(t);
             }

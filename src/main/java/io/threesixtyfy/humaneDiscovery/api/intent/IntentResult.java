@@ -6,7 +6,6 @@ import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.TokenType;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentBuilderString;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -39,18 +38,6 @@ public class IntentResult extends BaseQueryResult {
 
     public Map<String, String> getDisplay() {
         return display;
-    }
-
-    public static class Fields {
-        static final XContentBuilderString DISPLAY = new XContentBuilderString("display");
-        static final XContentBuilderString SCORE = new XContentBuilderString("score");
-        static final XContentBuilderString TOKEN = new XContentBuilderString("token");
-        static final XContentBuilderString MATCH_LEVEL = new XContentBuilderString("matchLevel");
-        static final XContentBuilderString INPUT_TOKEN_TYPE = new XContentBuilderString("inputTokenType");
-        static final XContentBuilderString MATCH_TOKEN_TYPE = new XContentBuilderString("matchTokenType");
-        static final XContentBuilderString EDIT_DISTANCE = new XContentBuilderString("editDistance");
-        static final XContentBuilderString INTENT_TOKENS = new XContentBuilderString("intentTokens");
-        static final XContentBuilderString INTENT_CLASSES = new XContentBuilderString("intentClasses");
     }
 
     @Override
@@ -113,6 +100,18 @@ public class IntentResult extends BaseQueryResult {
         }
 
         builder.endObject();
+    }
+
+    private static class Fields {
+        static final String DISPLAY = "display";
+        static final String SCORE = "score";
+        static final String TOKEN = "token";
+        static final String MATCH_LEVEL = "matchLevel";
+        static final String INPUT_TOKEN_TYPE = "inputTokenType";
+        static final String MATCH_TOKEN_TYPE = "matchTokenType";
+        static final String EDIT_DISTANCE = "editDistance";
+        static final String INTENT_TOKENS = "intentTokens";
+        static final String INTENT_CLASSES = "intentClasses";
     }
 
     // each entity class display is one suggestion

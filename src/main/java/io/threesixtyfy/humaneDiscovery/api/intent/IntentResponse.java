@@ -4,16 +4,15 @@ import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryResponse;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentBuilderString;
 
 import java.io.IOException;
 
 public class IntentResponse extends BaseQueryResponse<IntentResult> {
 
-    public static final IntentResult[] EMPTY = new IntentResult[0];
-    public static final String[] EMPTY_TOKENS = new String[0];
+    public static final IntentResult[] INTENT_RESULTS_EMPTY = new IntentResult[0];
+    public static final String[] TOKENS_EMPTY = new String[0];
 
-    private String[] tokens = EMPTY_TOKENS;
+    private String[] tokens = TOKENS_EMPTY;
 
     public IntentResponse() {
         super();
@@ -49,11 +48,7 @@ public class IntentResponse extends BaseQueryResponse<IntentResult> {
 
     @Override
     protected IntentResult[] emptyResults() {
-        return EMPTY;
-    }
-
-    public static class Fields {
-        static final XContentBuilderString TOKENS = new XContentBuilderString("tokens");
+        return INTENT_RESULTS_EMPTY;
     }
 
     @Override
@@ -75,5 +70,9 @@ public class IntentResponse extends BaseQueryResponse<IntentResult> {
     public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
         out.writeStringArray(tokens);
+    }
+
+    public static class Fields {
+        static final String TOKENS = "tokens";
     }
 }

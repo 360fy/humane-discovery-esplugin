@@ -8,6 +8,7 @@
     <fileSets>
         <fileSet>
             <directory>${basedir}</directory>
+            <outputDirectory>elasticsearch/</outputDirectory>
             <includes>
                 <include>plugin-descriptor.properties</include>
                 <include>plugin-security.policy</include>
@@ -16,7 +17,7 @@
     </fileSets>
     <dependencySets>
         <dependencySet>
-            <outputDirectory>/</outputDirectory>
+            <outputDirectory>elasticsearch/</outputDirectory>
             <useProjectArtifact>true</useProjectArtifact>
             <useTransitiveFiltering>true</useTransitiveFiltering>
             <excludes>

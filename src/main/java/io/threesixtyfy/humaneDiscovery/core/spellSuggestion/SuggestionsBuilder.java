@@ -12,7 +12,7 @@ public class SuggestionsBuilder {
     public static final String HUMANE_QUERY_ANALYZER = "humane_query_analyzer";
     public static final String DUMMY_FIELD = "dummyField";
 
-    private static final SuggestionsBuilder instance = new SuggestionsBuilder();
+    private static final SuggestionsBuilder INSTANCE = new SuggestionsBuilder();
 
     private final SpellSuggestionsBuilder spellSuggestionsBuilder = new SpellSuggestionsBuilder();
 
@@ -20,7 +20,7 @@ public class SuggestionsBuilder {
     }
 
     public static SuggestionsBuilder INSTANCE() {
-        return instance;
+        return INSTANCE;
     }
 
     public Map<String, SuggestionSet> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String[] indices, Set<? extends SuggestionScope> suggestionScopes) {

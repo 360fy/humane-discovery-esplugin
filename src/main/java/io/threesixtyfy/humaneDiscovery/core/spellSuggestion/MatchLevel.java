@@ -1,9 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.core.spellSuggestion;
 
-//Uni(0),
-//Bi(1),
-//ShingleUni(2),
-//ShingleBi(3);
 public enum MatchLevel {
     Exact(0),
     EdgeGram(1),
@@ -17,10 +13,6 @@ public enum MatchLevel {
         this.level = level;
     }
 
-    public int getLevel() {
-        return level;
-    }
-
     public static MatchLevel byLevel(int level) {
         for (MatchLevel matchLevel : MatchLevel.values()) {
             if (matchLevel.getLevel() == level) {
@@ -29,5 +21,9 @@ public enum MatchLevel {
         }
 
         return null;
+    }
+
+    public int getLevel() {
+        return level;
     }
 }

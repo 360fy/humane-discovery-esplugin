@@ -1,5 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.core.utils;
 
+import org.apache.commons.lang3.StringUtils;
+
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -70,9 +72,9 @@ public class EditDistanceUtils {
     }
 
     public static int getDamerauLevenshteinDistance(CharSequence source, CharSequence target) {
-        if (source == null || "".equals(source)) {
-            return target == null || "".equals(target) ? 0 : target.length();
-        } else if (target == null || "".equals(target)) {
+        if (StringUtils.isEmpty(source)) {
+            return StringUtils.isEmpty(target) ? 0 : target.length();
+        } else if (StringUtils.isEmpty(target)) {
             return source.length();
         }
 

@@ -1,9 +1,9 @@
 package io.threesixtyfy.humaneDiscovery.api.commons;
 
-import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryRequest;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.client.Client;
+import org.elasticsearch.client.node.NodeClient;
 import org.elasticsearch.common.ParseFieldMatcher;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesReference;
@@ -12,17 +12,18 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.rest.BaseRestHandler;
-import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestRequest;
-import org.elasticsearch.rest.action.support.RestActions;
+import org.elasticsearch.rest.action.RestActions;
 import org.elasticsearch.search.SearchParseException;
+
+import java.io.IOException;
 
 public abstract class BaseQueryRestAction<T extends BaseQueryRequest> extends BaseRestHandler {
 
     @Inject
-    public BaseQueryRestAction(Settings settings, RestController controller, Client client) {
-        super(settings, controller, client);
+    public BaseQueryRestAction(Settings settings, RestController controller) {
+        super(settings);
         controller.registerHandler(RestRequest.Method.GET, "/" + restActionName(), this);
         controller.registerHandler(RestRequest.Method.POST, "/" + restActionName(), this);
 
@@ -37,18 +38,18 @@ public abstract class BaseQueryRestAction<T extends BaseQueryRequest> extends Ba
 
     protected abstract T newRequest();
 
-    protected abstract void execute(T request, final RestChannel channel, final Client client);
+    protected abstract RestChannelConsumer execute(T request, final Client client);
 
     @Override
-    public void handleRequest(final RestRequest request, final RestChannel channel, final Client client) {
+    public RestChannelConsumer prepareRequest(final RestRequest request, final NodeClient client) throws IOException {
         T baseRequest = newRequest();
 
         parseRequest(baseRequest, request, parseFieldMatcher, null);
 
-        execute(baseRequest, channel, client);
+        return execute(baseRequest, client);
     }
 
-    public void parseRequest(T baseRequest, RestRequest request, ParseFieldMatcher parseFieldMatcher, BytesReference bodyContent) {
+    private void parseRequest(T baseRequest, RestRequest request, ParseFieldMatcher parseFieldMatcher, BytesReference bodyContent) {
         baseRequest.indices(Strings.splitStringByCommaToArray(request.param("index")));
 
         if (bodyContent == null) {

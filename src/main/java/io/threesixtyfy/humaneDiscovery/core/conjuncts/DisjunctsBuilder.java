@@ -10,13 +10,13 @@ import java.util.Set;
 
 public class DisjunctsBuilder {
 
-    private static final DisjunctsBuilder instance = new DisjunctsBuilder();
-
-    public static DisjunctsBuilder INSTANCE() {
-        return instance;
-    }
+    private static final DisjunctsBuilder INSTANCE = new DisjunctsBuilder();
 
     private DisjunctsBuilder() {
+    }
+
+    public static DisjunctsBuilder INSTANCE() {
+        return INSTANCE;
     }
 
     // TODO: add key prefix for both disjunct and conjunct... key prefix would typically be the index

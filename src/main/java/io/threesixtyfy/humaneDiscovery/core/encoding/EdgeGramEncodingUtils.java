@@ -1,9 +1,9 @@
 package io.threesixtyfy.humaneDiscovery.core.encoding;
 
 import io.threesixtyfy.humaneDiscovery.tokenFilter.StringTokenStream;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.ngram.EdgeNGramTokenFilter;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.io.IOException;
@@ -12,7 +12,7 @@ import java.util.Set;
 
 public class EdgeGramEncodingUtils {
 
-    private final ESLogger logger = Loggers.getLogger(EdgeGramEncodingUtils.class);
+    private static final Logger logger = Loggers.getLogger(EdgeGramEncodingUtils.class);
 
     private final StringTokenStream edgeGramInputTokenStream;
     private final EdgeNGramTokenFilter edgeGramTokenFilter;

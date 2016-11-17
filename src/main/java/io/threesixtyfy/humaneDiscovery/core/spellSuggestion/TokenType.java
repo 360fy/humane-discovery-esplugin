@@ -4,9 +4,6 @@ public enum TokenType {
     Uni(0),
     Bi(1);
 
-//    ShingleUni(2),
-//    ShingleBi(3);
-
     final int level;
 
     TokenType(int level) {

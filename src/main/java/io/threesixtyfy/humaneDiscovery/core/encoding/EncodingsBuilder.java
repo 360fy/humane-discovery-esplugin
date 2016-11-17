@@ -3,7 +3,7 @@ package io.threesixtyfy.humaneDiscovery.core.encoding;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import io.threesixtyfy.humaneDiscovery.core.utils.FastObjectPool;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.util.Set;
@@ -11,7 +11,7 @@ import java.util.concurrent.ExecutionException;
 
 public class EncodingsBuilder {
 
-    private final ESLogger logger = Loggers.getLogger(EncodingsBuilder.class);
+    private static final Logger logger = Loggers.getLogger(EncodingsBuilder.class);
 
     private final FastObjectPool<PhoneticEncodingUtils> phoneticEncodingUtilsPool;
 

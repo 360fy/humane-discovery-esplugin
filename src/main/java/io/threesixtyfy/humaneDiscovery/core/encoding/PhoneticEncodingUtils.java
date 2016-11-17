@@ -3,24 +3,24 @@ package io.threesixtyfy.humaneDiscovery.core.encoding;
 import io.threesixtyfy.humaneDiscovery.core.utils.FastObjectPool;
 import io.threesixtyfy.humaneDiscovery.tokenFilter.HumaneTokenFilter;
 import io.threesixtyfy.humaneDiscovery.tokenFilter.StringTokenStream;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_END_PREFIX;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_PREFIX;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_START_PREFIX;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_END_PREFIX;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_PREFIX;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_START_PREFIX;
 
 public class PhoneticEncodingUtils {
 
-    public static final int MIN_PHONETIC_ENCODING_LENGTH = 3;
-    public static final int NO_ENCODING_LENGTH = 1;
+    private static final int MIN_PHONETIC_ENCODING_LENGTH = 3;
+    private static final int NO_ENCODING_LENGTH = 1;
 
-    private final ESLogger logger = Loggers.getLogger(PhoneticEncodingUtils.class);
+    private static final Logger logger = Loggers.getLogger(PhoneticEncodingUtils.class);
 
     private final StringTokenStream phoneticInputTokenStream = new StringTokenStream();
     private final HumaneTokenFilter phoneticTokenFilter = new HumaneTokenFilter(phoneticInputTokenStream);
@@ -123,19 +123,6 @@ public class PhoneticEncodingUtils {
 
         return 2;
     }
-
-//    public static class Factory extends BasePooledObjectFactory<PhoneticEncodingUtils> {
-//
-//        @Override
-//        public PhoneticEncodingUtils create() throws Exception {
-//            return new PhoneticEncodingUtils();
-//        }
-//
-//        @Override
-//        public PooledObject<PhoneticEncodingUtils> wrap(PhoneticEncodingUtils phoneticEncodingUtils) {
-//            return new DefaultPooledObject<>(phoneticEncodingUtils);
-//        }
-//    }
 
     public static class Factory implements FastObjectPool.PoolFactory<PhoneticEncodingUtils> {
 

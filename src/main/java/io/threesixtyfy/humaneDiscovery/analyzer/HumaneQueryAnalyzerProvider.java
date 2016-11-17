@@ -1,28 +1,26 @@
 package io.threesixtyfy.humaneDiscovery.analyzer;
 
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.inject.assistedinject.Assisted;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
-import org.elasticsearch.index.Index;
+import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
 import org.elasticsearch.index.analysis.CustomAnalyzer;
 import org.elasticsearch.index.analysis.LowerCaseTokenFilterFactory;
 import org.elasticsearch.index.analysis.StandardTokenizerFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
-import org.elasticsearch.index.settings.IndexSettingsService;
 
 public class HumaneQueryAnalyzerProvider extends AbstractIndexAnalyzerProvider<CustomAnalyzer> {
 
+    public static final String NAME = "humane_query_analyzer";
+
     private final CustomAnalyzer customAnalyzer;
 
-    @Inject
-    public HumaneQueryAnalyzerProvider(Index index, IndexSettingsService indexSettingsService, Environment env, @Assisted String name, @Assisted Settings settings) {
-        super(index, indexSettingsService.indexSettings(), name, settings);
-        customAnalyzer = new CustomAnalyzer(new StandardTokenizerFactory(index, indexSettingsService, name, settings),
+    public HumaneQueryAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
+        super(indexSettings, name, settings);
+        customAnalyzer = new CustomAnalyzer(new StandardTokenizerFactory(indexSettings, environment, name, settings),
                 null,
                 new TokenFilterFactory[]{
-                        new LowerCaseTokenFilterFactory(index, indexSettingsService, name, settings)
+                        new LowerCaseTokenFilterFactory(indexSettings, environment, name, settings)
 //                        new StopTokenFilterFactory(index, indexSettingsService, env, name, settings)
                 });
     }

@@ -1,5 +1,6 @@
 package io.threesixtyfy.humaneDiscovery.tokenFilter;
 
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -7,9 +8,7 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
-import org.apache.lucene.analysis.util.CharacterUtils;
 import org.apache.lucene.util.BytesRef;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.io.IOException;
@@ -18,13 +17,17 @@ import java.nio.charset.StandardCharsets;
 
 public class EdgeGramTokenFilter extends TokenFilter {
 
-    private final ESLogger logger = Loggers.getLogger(EdgeGramTokenFilter.class);
+    private static final Logger logger = Loggers.getLogger(EdgeGramTokenFilter.class);
 
-    private final CharacterUtils charUtils;
+    private final PayloadAttribute payloadAtt;
     private final int minGram;
     private final int maxGram;
     private final String prefix;
     private final boolean payload;
+    private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
+    private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
+    private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
+    private final PositionLengthAttribute posLenAtt = addAttribute(PositionLengthAttribute.class);
     //    private char[] curTermBuffer;
     private char[] curTermCharArray;
     private CharBuffer curTermBuffer;
@@ -35,15 +38,7 @@ public class EdgeGramTokenFilter extends TokenFilter {
     private int tokEnd; // only used if the length changed before this filter
     private int savePosIncr;
     private int savePosLen;
-
     private String source;
-
-    private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
-    private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
-    private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
-    private final PositionLengthAttribute posLenAtt = addAttribute(PositionLengthAttribute.class);
-
-    final PayloadAttribute payloadAtt;
 
     /**
      * Creates EdgeNGramTokenFilter that can generate n-grams in the sizes of the given range
@@ -63,7 +58,6 @@ public class EdgeGramTokenFilter extends TokenFilter {
             throw new IllegalArgumentException("minGram must not be greater than maxGram");
         }
 
-        this.charUtils = CharacterUtils.getInstance();
         this.minGram = minGram;
         this.maxGram = maxGram;
         this.prefix = "".equals(prefix) ? null : prefix;
@@ -87,7 +81,7 @@ public class EdgeGramTokenFilter extends TokenFilter {
                     source = termAtt.toString();
                     curTermBuffer = CharBuffer.wrap(curTermCharArray);
                     curTermLength = termAtt.length();
-                    curCodePointCount = charUtils.codePointCount(termAtt);
+                    curCodePointCount = Character.codePointCount(termAtt, 0, termAtt.length());
                     curGramSize = minGram;
                     tokStart = offsetAtt.startOffset();
                     tokEnd = offsetAtt.endOffset();

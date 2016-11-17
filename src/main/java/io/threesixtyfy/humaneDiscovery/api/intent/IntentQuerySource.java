@@ -14,14 +14,14 @@ import java.util.Set;
 
 public class IntentQuerySource extends BaseQuerySource<IntentQuerySource> {
 
-    public static final String TAG_QUERY = "query";
-    public static final String TAG_LOOKUP_ENTITIES = "lookupEntities";
-    public static final String TAG_REGEX_ENTITIES = "regexEntities";
-    public static final String TAG_NAME = "name";
-    public static final String TAG_CLASS = "entityClass";
-    public static final String TAG_WEIGHT = "weight";
-    public static final String TAG_REGEX = "regex";
-    public static final String TAG_RESULT = "result";
+    private static final String QUERY_TAG = "query";
+    private static final String LOOKUP_ENTITIES_TAG = "lookupEntities";
+    private static final String REGEX_ENTITIES_TAG = "regexEntities";
+    private static final String NAME_TAG = "name";
+    private static final String CLASS_TAG = "entityClass";
+    private static final String WEIGHT_TAG = "weight";
+    private static final String REGEX_TAG = "regex";
+    private static final String RESULT_TAG = "result";
 
     private Set<LookupIntentEntity> lookupEntities;
 
@@ -57,16 +57,16 @@ public class IntentQuerySource extends BaseQuerySource<IntentQuerySource> {
             if (token == XContentParser.Token.FIELD_NAME) {
                 String fieldName = parser.currentName();
 
-                if (TAG_QUERY.equals(fieldName) || TAG_LOOKUP_ENTITIES.equals(fieldName) || TAG_REGEX_ENTITIES.equals(fieldName)) {
+                if (QUERY_TAG.equals(fieldName) || LOOKUP_ENTITIES_TAG.equals(fieldName) || REGEX_ENTITIES_TAG.equals(fieldName)) {
                     currentFieldName = fieldName;
                 } else {
                     throw new ElasticsearchParseException("failed to parse. got unknown field name [{}] for token [{}]", fieldName, token);
                 }
-            } else if (TAG_QUERY.equals(currentFieldName)) {
+            } else if (QUERY_TAG.equals(currentFieldName)) {
                 parseQuery(parser, token);
-            } else if (TAG_LOOKUP_ENTITIES.equals(currentFieldName)) {
+            } else if (LOOKUP_ENTITIES_TAG.equals(currentFieldName)) {
                 parseLookupEntities(parser, token);
-            } else if (TAG_REGEX_ENTITIES.equals(currentFieldName)) {
+            } else if (REGEX_ENTITIES_TAG.equals(currentFieldName)) {
                 parseRegexEntities(parser, token);
             } else {
                 if (token == null) {
@@ -106,13 +106,13 @@ public class IntentQuerySource extends BaseQuerySource<IntentQuerySource> {
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
-            } else if (TAG_NAME.equals(currentFieldName)) {
+            } else if (NAME_TAG.equals(currentFieldName)) {
                 regexIntentEntity.setEntityName(parseStringValue(parser, token));
-            } else if (TAG_WEIGHT.equals(currentFieldName)) {
+            } else if (WEIGHT_TAG.equals(currentFieldName)) {
                 regexIntentEntity.setWeight(parseFloatValue(parser, token));
-            } else if (TAG_REGEX.equals(currentFieldName)) {
+            } else if (REGEX_TAG.equals(currentFieldName)) {
                 regexIntentEntity.setRegex(parseStringValue(parser, token));
-            } else if (TAG_RESULT.equals(currentFieldName)) {
+            } else if (RESULT_TAG.equals(currentFieldName)) {
                 parseRegexIntentResultFields(parser, token, regexIntentEntity);
             } else {
                 throw new ElasticsearchParseException("got unexpected field [{}] for token [{}]", currentFieldName, token);
@@ -186,11 +186,11 @@ public class IntentQuerySource extends BaseQuerySource<IntentQuerySource> {
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
-            } else if (TAG_NAME.equals(currentFieldName)) {
+            } else if (NAME_TAG.equals(currentFieldName)) {
                 lookupIntentEntity.setEntityName(StringUtils.lowerCase(parseStringValue(parser, token)));
-            } else if (TAG_CLASS.equals(currentFieldName)) {
+            } else if (CLASS_TAG.equals(currentFieldName)) {
                 lookupIntentEntity.setEntityClass(StringUtils.lowerCase(parseStringValue(parser, token)));
-            } else if (TAG_WEIGHT.equals(currentFieldName)) {
+            } else if (WEIGHT_TAG.equals(currentFieldName)) {
                 lookupIntentEntity.setWeight(parseFloatValue(parser, token));
             } else {
                 throw new ElasticsearchParseException("got unexpected field [{}] for token [{}]", currentFieldName, token);
