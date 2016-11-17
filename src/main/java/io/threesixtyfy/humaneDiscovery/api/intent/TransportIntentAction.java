@@ -8,19 +8,21 @@ import io.threesixtyfy.humaneDiscovery.core.conjuncts.TokensBuilder;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.Suggestion;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionSet;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder;
+import io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -43,40 +45,29 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 
-// TODO:
-//      add token also, if there is no exact match
-//      return entity types too in suggestion
+// TODO: add token also, if there is no exact match
+// TODO: return entity types too in suggestion
 public class TransportIntentAction extends HandledTransportAction<IntentRequest, IntentResponse> {
 
-    private static final ESLogger logger = Loggers.getLogger(TransportIntentAction.class);
+    private static final Logger logger = Loggers.getLogger(TransportIntentAction.class);
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-
-    public static final String DID_YOU_MEAN_STORE = ":did_you_mean_store";
-    private final ClusterService clusterService;
-
-    private final IndicesService indicesService;
-
-    private final Client client;
-
-    private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
-
-    private final DisjunctsBuilder disjunctsBuilder = DisjunctsBuilder.INSTANCE();
-
-    private final TokensBuilder tokensBuilder = TokensBuilder.INSTANCE();
-
-//    public static final Map<String, SuggestionSet> EmptySuggestionMap = new HashMap<>();
-
-    public static final FeatureFunction[] FeatureFunctions = new FeatureFunction[]{
+    private static final FeatureFunction[] FeatureFunctions = new FeatureFunction[]{
             new PrioritiseConsecutiveSuggestion(),
             new PrioritiseSuggestionWithMarker(),
             new PrioritiseWithBigram(),
             new DeprioritiseInterleavingSuggestion()
     };
 
+    private final ClusterService clusterService;
+    private final IndicesService indicesService;
+    private final Client client;
+    private final SuggestionsBuilder suggestionsBuilder = SuggestionsBuilder.INSTANCE();
+    private final DisjunctsBuilder disjunctsBuilder = DisjunctsBuilder.INSTANCE();
+    private final TokensBuilder tokensBuilder = TokensBuilder.INSTANCE();
+
     @Inject
     public TransportIntentAction(Settings settings,
-                                 String actionName,
                                  ThreadPool threadPool,
                                  TransportService transportService,
                                  ClusterService clusterService,
@@ -84,7 +75,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
                                  ActionFilters actionFilters,
                                  IndexNameExpressionResolver indexNameExpressionResolver,
                                  Client client) {
-        super(settings, actionName, threadPool, transportService, actionFilters, indexNameExpressionResolver, IntentRequest.class);
+        super(settings, IntentAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, IntentRequest::new);
 
         this.clusterService = clusterService;
         this.client = client;
@@ -119,7 +110,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
                 try {
                     ClusterState clusterState = clusterService.state();
 
-                    String[] inputIndices = indexNameExpressionResolver.concreteIndices(clusterState, intentRequest);
+                    Index[] inputIndices = indexNameExpressionResolver.concreteIndices(clusterState, intentRequest);
 
                     IndexService indexService = indicesService.indexService(inputIndices[0]);
 
@@ -150,7 +141,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
 
                         Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(client,
                                 uniqueConjuncts.values(),
-                                new String[]{inputIndices[0] + DID_YOU_MEAN_STORE},
+                                new String[]{inputIndices[0] + WordIndexConstants.WORD_INDEX_STORE_SUFFIX},
                                 lookupIntentEntities);
 
                         List<SuggestionClassPermutation> suggestionClassPermutations = new ArrayList<>();
@@ -191,7 +182,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
             }
 
             @Override
-            public void onFailure(Throwable t) {
+            public void onFailure(Exception t) {
                 logger.error("failed to execute intent", t);
                 super.onFailure(t);
             }
@@ -263,13 +254,13 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
     }
 
     private void applyFeatureFunctions(Collection<SuggestionClassPermutation> suggestionClassPermutations, String[] tokens, Map<String, SuggestionSet> suggestionsMap) {
-        for (SuggestionClassPermutation suggestionClassPermutation : suggestionClassPermutations) {
-            if (suggestionClassPermutation.suggestionClasses.size() > 0) {
-                for (FeatureFunction featureFunction : FeatureFunctions) {
-                    featureFunction.apply(suggestionClassPermutation, tokens, suggestionsMap);
-                }
-            }
-        }
+        suggestionClassPermutations.stream()
+                .filter(suggestionClassPermutation -> suggestionClassPermutation.suggestionClasses.size() > 0)
+                .forEach(suggestionClassPermutation -> {
+                    for (FeatureFunction featureFunction : FeatureFunctions) {
+                        featureFunction.apply(suggestionClassPermutation, tokens, suggestionsMap);
+                    }
+                });
     }
 
     private void normaliseScore(Collection<SuggestionClassPermutation> suggestionClassPermutations) {
@@ -311,20 +302,23 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
         });
     }
 
-    static class SuggestionPermutation implements Comparable<SuggestionPermutation> {
+    interface FeatureFunction {
+        void apply(SuggestionClassPermutation suggestionClassPermutation, String[] tokens, Map<String, SuggestionSet> suggestionsMap);
+    }
+
+    private static class SuggestionPermutation implements Comparable<SuggestionPermutation> {
         private final String entityClass;
         private final double weight;
         private final double additionalWeight;
-        private double normalisedScore = 0.0f;
-
         // these are positional
         private final List<Suggestion> suggestions;
+        private double normalisedScore = 0.0f;
 
-        public SuggestionPermutation(String entityClass, List<Suggestion> suggestions) {
+        SuggestionPermutation(String entityClass, List<Suggestion> suggestions) {
             this(entityClass, suggestions, 0.0f);
         }
 
-        public SuggestionPermutation(String entityClass, List<Suggestion> suggestions, double additionalWeight) {
+        SuggestionPermutation(String entityClass, List<Suggestion> suggestions, double additionalWeight) {
             this.entityClass = entityClass;
             this.suggestions = suggestions;
             this.additionalWeight = additionalWeight;
@@ -338,22 +332,21 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
 
     }
 
-    static class SuggestionClass implements Comparable<SuggestionClass> {
+    private static class SuggestionClass implements Comparable<SuggestionClass> {
         private final int tokenStart;
         private final int tokenEnd;
 
         private final String entityClass;
+        // these are by weight
+        private final SortedSet<SuggestionPermutation> suggestionPermutations;
         private double weightMultiplier = 1.0f;
         private double weight;
 
-        // these are by weight
-        private final SortedSet<SuggestionPermutation> suggestionPermutations;
-
-        public SuggestionClass(String entityClass, SortedSet<SuggestionPermutation> suggestionPermutations, int tokenStart) {
+        SuggestionClass(String entityClass, SortedSet<SuggestionPermutation> suggestionPermutations, int tokenStart) {
             this(entityClass, suggestionPermutations, tokenStart, tokenStart);
         }
 
-        public SuggestionClass(String entityClass, SortedSet<SuggestionPermutation> suggestionPermutations, int tokenStart, int tokenEnd) {
+        SuggestionClass(String entityClass, SortedSet<SuggestionPermutation> suggestionPermutations, int tokenStart, int tokenEnd) {
             this.tokenStart = tokenStart;
             this.tokenEnd = tokenEnd;
             this.entityClass = entityClass;
@@ -361,12 +354,12 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
             this.computeWeight();
         }
 
-        public void halfWeightMultiplier() {
+        void halfWeightMultiplier() {
             this.weightMultiplier /= 2;
             this.computeWeight();
         }
 
-        public void computeWeight() {
+        void computeWeight() {
             this.weight = (this.tokenEnd - this.tokenStart + 1) * weightMultiplier * this.suggestionPermutations.stream()
                     .filter(suggestionPermutation -> suggestionPermutation != null)
                     .collect(Collectors.summingDouble(v -> v.weight));
@@ -398,29 +391,27 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
         public int compareTo(SuggestionClass o) {
             return Double.compare(o.weight, this.weight);
         }
-
     }
 
-    static class SuggestionClassPermutation implements Comparable<SuggestionClassPermutation> {
+    private static class SuggestionClassPermutation implements Comparable<SuggestionClassPermutation> {
+        // these are positional
+        private final List<SuggestionClass> suggestionClasses;
         private double weight = 0.0f;
         private double normalisedScore = 0.0f;
 
-        // these are positional
-        private final List<SuggestionClass> suggestionClasses;
-
-        public SuggestionClassPermutation(List<SuggestionClass> suggestionClasses) {
+        SuggestionClassPermutation(List<SuggestionClass> suggestionClasses) {
             this.suggestionClasses = suggestionClasses;
             this.computeWeight();
         }
 
-        public void computeWeight() {
+        void computeWeight() {
             this.weight = suggestionClasses.stream()
                     .filter(v -> v != null)
                     .collect(Collectors.summingDouble(v -> v.weight));
         }
 
         // all suggestion classes from startIndex to endIndex collapses into one at startIndex
-        public void collapse(int startIndex, int endIndex) {
+        void collapse(int startIndex, int endIndex) {
             SuggestionClass collapseInto = suggestionClasses.get(startIndex);
             if (collapseInto != null) {
                 List<SuggestionClass> collapseFrom = suggestionClasses.subList(startIndex + 1, endIndex);
@@ -435,7 +426,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
             this.computeWeight();
         }
 
-        public SuggestionClass collapse(SuggestionClass collapseInto, List<SuggestionClass> collapseFrom) {
+        SuggestionClass collapse(SuggestionClass collapseInto, List<SuggestionClass> collapseFrom) {
             SortedSet<SuggestionPermutation> currentPermutations = collapseInto.suggestionPermutations;
             SuggestionClass lastSuggestionClass = collapseInto;
             for (SuggestionClass suggestionClass : collapseFrom) {
@@ -464,11 +455,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
         }
     }
 
-    interface FeatureFunction {
-        void apply(SuggestionClassPermutation suggestionClassPermutation, String[] tokens, Map<String, SuggestionSet> suggestionsMap);
-    }
-
-    static class PrioritiseConsecutiveSuggestion implements FeatureFunction {
+    private static class PrioritiseConsecutiveSuggestion implements FeatureFunction {
 
         @Override
         public void apply(SuggestionClassPermutation suggestionClassPermutation, String[] tokens, Map<String, SuggestionSet> suggestionsMap) {
@@ -503,27 +490,14 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
                 suggestionClassPermutation.collapse(startIndex, size);
             }
 
-            List<Integer> indicesToRemove = new ArrayList<>();
-            int i = 0;
-            for (SuggestionClass suggestionClass : suggestionClasses) {
-                if (suggestionClass == null) {
-                    indicesToRemove.add(i);
-                }
-
-                i++;
-            }
-
-            for (int j = indicesToRemove.size() - 1; j >= 0; j--) {
-                int index = indicesToRemove.get(j);
-                suggestionClasses.remove(index);
-            }
+            suggestionClasses.removeIf(suggestionClass -> suggestionClass == null);
 
             suggestionClassPermutation.computeWeight();
         }
 
     }
 
-    static class PrioritiseSuggestionWithMarker implements FeatureFunction {
+    private static class PrioritiseSuggestionWithMarker implements FeatureFunction {
 
         @Override
         public void apply(SuggestionClassPermutation suggestionClassPermutation, String[] tokens, Map<String, SuggestionSet> suggestionsMap) {
@@ -532,7 +506,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
 
     }
 
-    static class DeprioritiseInterleavingSuggestion implements FeatureFunction {
+    private static class DeprioritiseInterleavingSuggestion implements FeatureFunction {
 
         @Override
         public void apply(SuggestionClassPermutation suggestionClassPermutation, String[] tokens, Map<String, SuggestionSet> suggestionsMap) {
@@ -557,7 +531,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
 
     }
 
-    static class PrioritiseWithBigram implements FeatureFunction {
+    private static class PrioritiseWithBigram implements FeatureFunction {
 
         @Override
         public void apply(SuggestionClassPermutation suggestionClassPermutation, String[] tokens, Map<String, SuggestionSet> suggestionsMap) {

@@ -1,25 +1,24 @@
 package io.threesixtyfy.humaneDiscovery.api.intent;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryRestAction;
-import io.threesixtyfy.humaneDiscovery.api.intent.IntentAction;
-import io.threesixtyfy.humaneDiscovery.api.intent.IntentRequest;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestController;
-import org.elasticsearch.rest.action.support.RestStatusToXContentListener;
+import org.elasticsearch.rest.action.RestStatusToXContentListener;
 
 public class IntentRestAction extends BaseQueryRestAction<IntentRequest> {
 
+    private static final String NAME = "_intent";
+
     @Inject
-    public IntentRestAction(Settings settings, RestController controller, Client client) {
-        super(settings, controller, client);
+    public IntentRestAction(Settings settings, RestController controller) {
+        super(settings, controller);
     }
 
     @Override
     protected String restActionName() {
-        return "_intent";
+        return NAME;
     }
 
     @Override
@@ -28,8 +27,8 @@ public class IntentRestAction extends BaseQueryRestAction<IntentRequest> {
     }
 
     @Override
-    protected void execute(IntentRequest request, RestChannel channel, Client client) {
-        client.execute(IntentAction.INSTANCE, request, new RestStatusToXContentListener<>(channel));
+    protected RestChannelConsumer execute(IntentRequest request, Client client) {
+        return channel -> client.execute(IntentAction.INSTANCE, request, new RestStatusToXContentListener<>(channel));
     }
 
 }

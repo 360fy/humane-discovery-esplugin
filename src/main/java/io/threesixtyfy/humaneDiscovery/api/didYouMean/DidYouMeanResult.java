@@ -4,7 +4,6 @@ import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryResult;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentBuilderString;
 
 import java.io.IOException;
 
@@ -35,12 +34,12 @@ public class DidYouMeanResult extends BaseQueryResult {
         out.writeString(result);
     }
 
-    public static class Fields {
-        static final XContentBuilderString RESULT = new XContentBuilderString("result");
-    }
-
     @Override
     protected void buildXContent(XContentBuilder builder, Params params) throws IOException {
         builder.field(Fields.RESULT, result);
+    }
+
+    public static class Fields {
+        static final String RESULT = "result";
     }
 }

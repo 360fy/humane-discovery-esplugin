@@ -1,7 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.core.utils;
 
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.util.concurrent.Semaphore;
@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class FastObjectPool<T> {
 
-    private final ESLogger logger = Loggers.getLogger(SuggestionsBuilder.class);
+    private static final Logger logger = Loggers.getLogger(SuggestionsBuilder.class);
 
     private final Holder<T>[] objects;
     private final int[] ringBuffer;
@@ -77,6 +77,10 @@ public class FastObjectPool<T> {
         }
     }
 
+    public interface PoolFactory<T> {
+        T create();
+    }
+
     public static class Holder<T> {
         private final T value;
         private final int slot;
@@ -91,9 +95,5 @@ public class FastObjectPool<T> {
         public T getValue() {
             return value;
         }
-    }
-
-    public interface PoolFactory<T> {
-        T create();
     }
 }

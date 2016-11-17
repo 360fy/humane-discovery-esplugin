@@ -7,7 +7,7 @@ import java.util.Set;
 public class StopWords {
 
     private static final Set<String> WordList = new HashSet<>(Arrays.asList(
-            "a","an", "and", "are", "as", "at", "be", "but", "by",
+            "a", "an", "and", "are", "as", "at", "be", "but", "by",
             "for", "if", "in", "into", "is", "it",
             "no", "not", "of", "on", "or", "such",
             "that", "the", "their", "then", "there", "these",

@@ -4,20 +4,21 @@ import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryRestAction;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestController;
-import org.elasticsearch.rest.action.support.RestStatusToXContentListener;
+import org.elasticsearch.rest.action.RestStatusToXContentListener;
 
 public class DidYouMeanRestAction extends BaseQueryRestAction<DidYouMeanRequest> {
 
+    private static final String NAME = "_didYouMean";
+
     @Inject
-    public DidYouMeanRestAction(Settings settings, RestController controller, Client client) {
-        super(settings, controller, client);
+    public DidYouMeanRestAction(Settings settings, RestController controller) {
+        super(settings, controller);
     }
 
     @Override
     protected String restActionName() {
-        return "_didYouMean";
+        return NAME;
     }
 
     @Override
@@ -26,8 +27,8 @@ public class DidYouMeanRestAction extends BaseQueryRestAction<DidYouMeanRequest>
     }
 
     @Override
-    protected void execute(DidYouMeanRequest request, RestChannel channel, Client client) {
-        client.execute(DidYouMeanAction.INSTANCE, request, new RestStatusToXContentListener<>(channel));
+    protected RestChannelConsumer execute(DidYouMeanRequest request, Client client) {
+        return channel -> client.execute(DidYouMeanAction.INSTANCE, request, new RestStatusToXContentListener<>(channel));
     }
 
 }

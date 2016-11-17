@@ -1,35 +1,34 @@
 package io.threesixtyfy.humaneDiscovery.analyzer;
 
 import io.threesixtyfy.humaneDiscovery.tokenFilter.EdgeGramTokenFilterFactory;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.inject.assistedinject.Assisted;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.index.Index;
+import org.elasticsearch.env.Environment;
+import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
 import org.elasticsearch.index.analysis.CustomAnalyzer;
 import org.elasticsearch.index.analysis.LowerCaseTokenFilterFactory;
 import org.elasticsearch.index.analysis.StandardTokenizerFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
-import org.elasticsearch.index.settings.IndexSettingsService;
 
 public class HumaneDescriptiveTextAnalyzerProvider extends AbstractIndexAnalyzerProvider<CustomAnalyzer> {
 
-    public static final int DEFAULT_MIN_EDGE_GRAM_SIZE = 2;
+    public static final String NAME = "humane_descriptive_text_analyzer";
+
+    private static final int MIN_EDGE_GRAM_SIZE_DEFAULT = 2;
 
     private final CustomAnalyzer customAnalyzer;
 
-    @Inject
-    public HumaneDescriptiveTextAnalyzerProvider(Index index, IndexSettingsService indexSettingsService, @Assisted String name, @Assisted Settings settings) {
-        super(index, indexSettingsService.indexSettings(), name, settings);
+    public HumaneDescriptiveTextAnalyzerProvider(IndexSettings indexSettings, Environment environment, String name, Settings settings) {
+        super(indexSettings, name, settings);
 
-        int minGram = settings.getAsInt("min_gram", DEFAULT_MIN_EDGE_GRAM_SIZE);
+        int minGram = settings.getAsInt(AnalyzerConstants.MIN_GRAM_SETTING, MIN_EDGE_GRAM_SIZE_DEFAULT);
 
-        customAnalyzer = new CustomAnalyzer(new StandardTokenizerFactory(index, indexSettingsService, name, settings),
+        customAnalyzer = new CustomAnalyzer(new StandardTokenizerFactory(indexSettings, environment, name, settings),
                 null,
                 new TokenFilterFactory[]{
-                        new LowerCaseTokenFilterFactory(index, indexSettingsService, name, settings),
-                        new EdgeGramTokenFilterFactory(index, indexSettingsService, name, Settings.builder()
-                                .put("min_gram", minGram)
+                        new LowerCaseTokenFilterFactory(indexSettings, environment, name, settings),
+                        new EdgeGramTokenFilterFactory(indexSettings, environment, name, Settings.builder()
+                                .put(AnalyzerConstants.MIN_GRAM_SETTING, minGram)
                                 .build())
                 });
     }

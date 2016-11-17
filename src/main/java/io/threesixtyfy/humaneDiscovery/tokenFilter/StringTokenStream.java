@@ -12,14 +12,17 @@ public class StringTokenStream extends TokenStream {
     private boolean used = true;
     private String value = null;
 
-    /** Creates a new TokenStream that returns a String as single token.
+    /**
+     * Creates a new TokenStream that returns a String as single token.
      * <p>Warning: Does not initialize the value, you must call
      * {@link #setValue(String)} afterwards!
      */
     public StringTokenStream() {
     }
 
-    /** Sets the string value. */
+    /**
+     * Sets the string value.
+     */
     public void setValue(String value) {
         this.value = value;
     }

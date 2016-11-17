@@ -19,17 +19,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class HumaneTokenFilter extends TokenFilter {
-//    private final ESLogger logger = Loggers.getLogger(HumaneTokenFilter.class);
+    private static final int MAX_TOKEN_GENERATOR_INDEX = 3;
 
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
-
+    private final TokenGenerator[] tokenGenerators;
     private String inputToken = null;
     private boolean generateHumaneTokens = false;
-
-    private static final int MAX_TOKEN_GENERATOR_INDEX = 3;
     private int currentTokenGeneratorIndex = 0;
-
-    private final TokenGenerator[] tokenGenerators;
 
     /**
      * Construct a token stream filtering the given input.
@@ -264,13 +260,12 @@ public class HumaneTokenFilter extends TokenFilter {
     }
 
     static class RefinedSoundexTokenGenerator extends BaseTokenGenerator {
+        // output is a string such as ab|ac|...
+        private static final Pattern pattern = null;
         /**
          * phonetic encoder
          */
         protected final RefinedSoundex encoder = new RefinedSoundex();
-
-        // output is a string such as ab|ac|...
-        private static final Pattern pattern = null;
 
         RefinedSoundexTokenGenerator(CharTermAttribute termAtt, PositionIncrementAttribute posAtt, PayloadAttribute payloadAtt) {
             super(TokenTypes.RefinedSoundex.prefix, pattern, termAtt, posAtt, payloadAtt);
@@ -283,13 +278,12 @@ public class HumaneTokenFilter extends TokenFilter {
     }
 
     static class DMSoundexTokenGenerator extends BaseTokenGenerator {
+        // output is a string such as ab|ac|...
+        private static final Pattern pattern = Pattern.compile("([^|]+)");
         /**
          * phonetic encoder
          */
         protected final DaitchMokotoffSoundex encoder = new DaitchMokotoffSoundex();
-
-        // output is a string such as ab|ac|...
-        private static final Pattern pattern = Pattern.compile("([^|]+)");
 
         DMSoundexTokenGenerator(CharTermAttribute termAtt, PositionIncrementAttribute posAtt, PayloadAttribute payloadAtt) {
             super(TokenTypes.DMSoundex.prefix, pattern, termAtt, posAtt, payloadAtt);
@@ -302,13 +296,12 @@ public class HumaneTokenFilter extends TokenFilter {
     }
 
     static class BMTokenGenerator extends BaseTokenGenerator {
-        private final PhoneticEngine engine = new PhoneticEngine(NameType.GENERIC, RuleType.APPROX, true);
-        private final Languages.LanguageSet languages = Languages.ANY_LANGUAGE;
-
         // output is a string such as ab|ac|...
         // in complex cases like d'angelo it's (anZelo|andZelo|...)-(danZelo|...)
         // if there are multiple 's, it starts to nest...
         private static final Pattern pattern = Pattern.compile("([^()|-]+)");
+        private final PhoneticEngine engine = new PhoneticEngine(NameType.GENERIC, RuleType.APPROX, true);
+        private final Languages.LanguageSet languages = Languages.ANY_LANGUAGE;
 
         BMTokenGenerator(CharTermAttribute termAtt, PositionIncrementAttribute posAtt, PayloadAttribute payloadAtt) {
             super(TokenTypes.BM.prefix, pattern, termAtt, posAtt, payloadAtt);

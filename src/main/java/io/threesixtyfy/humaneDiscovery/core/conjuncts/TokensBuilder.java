@@ -14,13 +14,13 @@ import static io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBu
 
 public class TokensBuilder {
 
-    private static final TokensBuilder instance = new TokensBuilder();
-
-    public static TokensBuilder INSTANCE() {
-        return instance;
-    }
+    private static final TokensBuilder INSTANCE = new TokensBuilder();
 
     private TokensBuilder() {
+    }
+
+    public static TokensBuilder INSTANCE() {
+        return INSTANCE;
     }
 
     public List<String> tokens(AnalysisService analysisService, String query) throws IOException {

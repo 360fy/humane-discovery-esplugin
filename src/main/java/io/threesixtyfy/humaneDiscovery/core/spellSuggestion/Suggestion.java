@@ -1,13 +1,13 @@
 package io.threesixtyfy.humaneDiscovery.core.spellSuggestion;
 
 import org.apache.commons.lang3.StringUtils;
-import org.elasticsearch.common.logging.ESLogger;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
 import java.util.List;
 
 public class Suggestion implements Comparable<Suggestion> {
-    private static final ESLogger logger = Loggers.getLogger(Suggestion.class);
+    private static final Logger logger = Loggers.getLogger(Suggestion.class);
 
     private final TokenType inputTokenType;
     private final TokenType matchTokenType;
@@ -18,17 +18,13 @@ public class Suggestion implements Comparable<Suggestion> {
     // total count for the suggestion word
     private final int totalCount;
     private final boolean edgeGram;
-
-    private MatchStats matchStats;
-
-    private boolean ignore;
-
     private final String entityClass;
+    private final List<EntityType> entityTypeStats;
+    private MatchStats matchStats;
+    private boolean ignore;
     private int count;
     private float occurrence;
     private float weight;
-
-    private final List<EntityType> entityTypeStats;
 
     public Suggestion(TokenType inputTokenType, TokenType matchTokenType, String suggestion, String match, String display, MatchStats matchStats, int totalCount, String entityClass, List<EntityType> entityTypeStats) {
         this.inputTokenType = inputTokenType;
@@ -107,12 +103,12 @@ public class Suggestion implements Comparable<Suggestion> {
         return occurrence;
     }
 
-    public void setWeight(float weight) {
-        this.weight = weight;
-    }
-
     public float getWeight() {
         return weight;
+    }
+
+    public void setWeight(float weight) {
+        this.weight = weight;
     }
 
     public List<EntityType> getEntityTypeStats() {

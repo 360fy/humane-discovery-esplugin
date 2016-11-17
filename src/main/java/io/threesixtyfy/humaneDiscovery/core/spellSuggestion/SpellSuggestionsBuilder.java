@@ -5,14 +5,16 @@ import com.google.common.cache.CacheBuilder;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.Conjunct;
 import io.threesixtyfy.humaneDiscovery.core.dictionary.StandardSynonyms;
 import io.threesixtyfy.humaneDiscovery.core.dictionary.StopWords;
-import io.threesixtyfy.humaneDiscovery.core.encoding.Constants;
+import io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants;
 import io.threesixtyfy.humaneDiscovery.core.encoding.EncodingsBuilder;
 import io.threesixtyfy.humaneDiscovery.core.utils.EditDistanceUtils;
+import io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.join.ScoreMode;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
@@ -36,53 +38,48 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_END_PREFIX_LENGTH;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_PREFIX;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_PREFIX_LENGTH;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.GRAM_START_PREFIX_LENGTH;
-import static io.threesixtyfy.humaneDiscovery.core.encoding.Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_END_PREFIX_LENGTH;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_PREFIX;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_PREFIX_LENGTH;
+import static io.threesixtyfy.humaneDiscovery.core.encoding.EncodingConstants.GRAM_START_PREFIX_LENGTH;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.BIGRAM_WORD_INDEX_TYPE;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.COUNT_AS_FULL_WORD_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.DISPLAY_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.ENCODINGS_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.FIELD_NAME_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.FIELD_STATS_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.ORIGINAL_WORDS_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.TOTAL_COUNT_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.TOTAL_WEIGHT_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.UNIGRAM_WORD_INDEX_TYPE;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.WORD_1_ENCODINGS_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.WORD_1_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.WORD_2_ENCODINGS_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.WORD_2_FIELD;
+import static io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants.WORD_FIELD;
 import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
 
 public class SpellSuggestionsBuilder {
-
-    public static final float GRAM_START_BOOST = 10.0f;
-    public static final float GRAM_END_BOOST = 10.0f;
-    public static final float EXACT_TERM_BOOST = 100.0f;
-    public static final int MINIMUM_NUMBER_SHOULD_MATCH = 2;
-    public static final String FIELD_TOTAL_WEIGHT = "totalWeight";
-    public static final String FIELD_TOTAL_COUNT = "totalCount";
-    public static final String FIELD_COUNT_AS_FULL_WORD = "countAsFullWord";
-    public static final String FIELD_ENCODINGS = "encodings";
-    public static final String FIELD_ORIGINAL_WORDS = "originalWords";
-    public static final String FIELD_WORD = "word";
-    public static final String FIELD_DISPLAY = "display";
-    public static final String FIELD_WORD_1 = "word1";
-    public static final String FIELD_WORD_2 = "word2";
-    public static final String FIELD_STATS = "fieldStats";
-    public static final String[] FETCH_SOURCES = new String[]{
-            FIELD_ENCODINGS,
-            FIELD_TOTAL_WEIGHT,
-            FIELD_TOTAL_COUNT,
-            FIELD_COUNT_AS_FULL_WORD,
-            FIELD_WORD,
-            FIELD_WORD_1,
-            FIELD_WORD_2,
-            FIELD_STATS,
+    private static final float GRAM_START_BOOST = 10.0f;
+    private static final float GRAM_END_BOOST = 10.0f;
+    private static final float EXACT_TERM_BOOST = 100.0f;
+    private static final int MINIMUM_NUMBER_SHOULD_MATCH = 2;
+    private static final String[] FETCH_SOURCES = new String[]{
+            ENCODINGS_FIELD,
+            TOTAL_WEIGHT_FIELD,
+            TOTAL_COUNT_FIELD,
+            COUNT_AS_FULL_WORD_FIELD,
+            WORD_FIELD,
+            WORD_1_FIELD,
+            WORD_2_FIELD,
+            FIELD_STATS_FIELD,
             "originalWords.*"};
-    public static final String FIELD_WORD_1_ENCODINGS = "word1Encodings";
-    public static final String FIELD_WORD_2_ENCODINGS = "word2Encodings";
 
-    public static final String FIELD_FIELD_NAME = "fieldName";
-
-    private final ESLogger logger = Loggers.getLogger(SpellSuggestionsBuilder.class);
+    private static final Logger logger = Loggers.getLogger(SpellSuggestionsBuilder.class);
 
     private final SuggestionSet NumberSuggestion = new SuggestionSet(true, false, null);
 
     private final SuggestionSet SingleLetterSuggestion = new SuggestionSet(false, false, new Suggestion[0]);
-
-    private StandardSynonyms standardSynonyms = new StandardSynonyms();
-
     private final EncodingsBuilder encodingsBuilder = new EncodingsBuilder();
 
     // TODO: expire on event only
@@ -91,20 +88,31 @@ public class SpellSuggestionsBuilder {
             .maximumSize(1000)
             .expireAfterAccess(30, TimeUnit.SECONDS)
             .build();
+    private StandardSynonyms standardSynonyms = new StandardSynonyms();
 
 //    private final ExecutorService futureExecutorService = new ThreadPoolExecutor(32, 32, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>(256));
 
-    public SpellSuggestionsBuilder() {
+    SpellSuggestionsBuilder() {
 //        NumberSuggestion.complete(new SuggestionSet(true, false, null));
 
 //        SingleLetterSuggestion.complete(new SuggestionSet(false, false, new Suggestion[0]));
+    }
+
+    private static <T> CompletableFuture<List<T>> sequence(List<CompletableFuture<T>> futures) {
+        CompletableFuture<Void> allDoneFuture =
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()]));
+        return allDoneFuture.thenApply(v ->
+                futures.stream().
+                        map(CompletableFuture::join).
+                        collect(Collectors.toList())
+        );
     }
 
     // if there are other suggestions, then ignore the one with very low count
     // else consider them ==> rejection shall happen at a very late stage
     // and selection is conditional to what other suggestions exist and what's their strength
     // e.g. hund for cardekho
-    public Map<String, SuggestionSet> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String[] indices, Set<? extends SuggestionScope> suggestionScopes) {
+    Map<String, SuggestionSet> fetchSuggestions(Client client, Collection<Conjunct> conjuncts, String[] indices, Set<? extends SuggestionScope> suggestionScopes) {
         TaskContext taskContext = new TaskContext(client, indices, suggestionScopes);
 
         try {
@@ -185,7 +193,7 @@ public class SpellSuggestionsBuilder {
 
         SearchResponse searchResponse = taskContext.client.prepareSearch(taskContext.indices)
                 .setSize(2)
-                .setTypes(UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, BIGRAM_DID_YOU_MEAN_INDEX_TYPE)
+                .setTypes(UNIGRAM_WORD_INDEX_TYPE, BIGRAM_WORD_INDEX_TYPE)
                 .setQuery(buildWordQuery(taskContext, word))
                 .setFetchSource(FETCH_SOURCES, null)
                 .execute()
@@ -204,7 +212,8 @@ public class SpellSuggestionsBuilder {
     private QueryBuilder buildSuggestionScope(TaskContext taskContext) {
         BoolQueryBuilder scopeQueryBuilder = new BoolQueryBuilder();
         for (SuggestionScope suggestionScope : taskContext.suggestionScopes) {
-            scopeQueryBuilder.should(QueryBuilders.nestedQuery("fieldStats", QueryBuilders.termQuery("fieldStats.fieldName", suggestionScope.getEntityName())));
+            // TODO: check the impact of ScoreMode
+            scopeQueryBuilder.should(QueryBuilders.nestedQuery("fieldStats", QueryBuilders.termQuery("fieldStats.fieldName", suggestionScope.getEntityName()), ScoreMode.None));
         }
 
         scopeQueryBuilder.minimumNumberShouldMatch(1);
@@ -225,8 +234,8 @@ public class SpellSuggestionsBuilder {
                     }
 
                     QueryBuilder[] queryBuilders = new QueryBuilder[]{
-                            buildEncodingQuery(taskContext, Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_ENCODINGS, word, encodings),
-                            buildEncodingQuery(taskContext, Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_ENCODINGS, word, encodings)
+                            buildEncodingQuery(taskContext, WordIndexConstants.UNIGRAM_WORD_INDEX_TYPE, ENCODINGS_FIELD, word, encodings),
+                            buildEncodingQuery(taskContext, WordIndexConstants.BIGRAM_WORD_INDEX_TYPE, ENCODINGS_FIELD, word, encodings)
                     };
 
                     return new QueryBuilderHolder(encodings, queryBuilders);
@@ -248,8 +257,8 @@ public class SpellSuggestionsBuilder {
 
                     final QueryBuilder[] queryBuilders = new QueryBuilder[conjunct.getLength() == 2 ? 3 : 2];
 
-                    queryBuilders[0] = buildEncodingQuery(taskContext, Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_ENCODINGS, word, encodings);
-                    queryBuilders[1] = buildEncodingQuery(taskContext, Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_ENCODINGS, word, encodings);
+                    queryBuilders[0] = buildEncodingQuery(taskContext, WordIndexConstants.UNIGRAM_WORD_INDEX_TYPE, ENCODINGS_FIELD, word, encodings);
+                    queryBuilders[1] = buildEncodingQuery(taskContext, WordIndexConstants.BIGRAM_WORD_INDEX_TYPE, ENCODINGS_FIELD, word, encodings);
 
                     if (conjunct.getLength() == 2) {
                         // we can form bigram query for these
@@ -265,8 +274,8 @@ public class SpellSuggestionsBuilder {
                         }
 
                         QueryBuilder shingleQueryBuilder = boolQuery()
-                                .must(buildEncodingQuery(taskContext, Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_WORD_1_ENCODINGS, word1, word1Encodings))
-                                .must(buildEncodingQuery(taskContext, Constants.BIGRAM_DID_YOU_MEAN_INDEX_TYPE, FIELD_WORD_2_ENCODINGS, word2, word2Encodings));
+                                .must(buildEncodingQuery(taskContext, WordIndexConstants.BIGRAM_WORD_INDEX_TYPE, WORD_1_ENCODINGS_FIELD, word1, word1Encodings))
+                                .must(buildEncodingQuery(taskContext, WordIndexConstants.BIGRAM_WORD_INDEX_TYPE, WORD_2_ENCODINGS_FIELD, word2, word2Encodings));
 
                         queryBuilders[2] = shingleQueryBuilder;
                     }
@@ -327,9 +336,9 @@ public class SpellSuggestionsBuilder {
 
             int length = w.length();
 
-            if (w.startsWith(Constants.GRAM_START_PREFIX)) {
+            if (w.startsWith(EncodingConstants.GRAM_START_PREFIX)) {
                 termQueryBuilder.boost(GRAM_START_BOOST * (length - GRAM_START_PREFIX_LENGTH));
-            } else if (w.startsWith(Constants.GRAM_END_PREFIX)) {
+            } else if (w.startsWith(EncodingConstants.GRAM_END_PREFIX)) {
                 termQueryBuilder.boost(GRAM_END_BOOST * (length - GRAM_END_PREFIX_LENGTH));
             } else if (w.startsWith(GRAM_PREFIX)) {
                 termQueryBuilder.boost(length - GRAM_PREFIX_LENGTH);
@@ -404,8 +413,8 @@ public class SpellSuggestionsBuilder {
                                  Map<String, Suggestion> suggestionMap,
                                  Set<String> inputWordEncodings) {
 //        double totalWeight = fieldValue(searchHit, FIELD_TOTAL_WEIGHT, 0.0d);
-        int totalCount = fieldValue(searchHit, FIELD_TOTAL_COUNT, 0);
-        List<Object> suggestedWordEncodings = fieldValues(searchHit, FIELD_ENCODINGS);
+        int totalCount = fieldValue(searchHit, TOTAL_COUNT_FIELD, 0);
+        List<Object> suggestedWordEncodings = fieldValues(searchHit, ENCODINGS_FIELD);
 
         // suggested word is prefix of input word
         if (inputTokenType == TokenType.Bi && matchTokenType == TokenType.Bi && !inputWord.equals(matchedWord) && (inputWord.startsWith(matchedWord) || inputWord.endsWith(matchedWord))) {
@@ -422,8 +431,8 @@ public class SpellSuggestionsBuilder {
                 for (Object e : suggestedWordEncodings) {
                     String encoding = (String) e;
                     if (e != null && !encoding.startsWith(GRAM_PREFIX)
-                            && !encoding.startsWith(Constants.GRAM_START_PREFIX)
-                            && !encoding.startsWith(Constants.GRAM_END_PREFIX)
+                            && !encoding.startsWith(EncodingConstants.GRAM_START_PREFIX)
+                            && !encoding.startsWith(EncodingConstants.GRAM_END_PREFIX)
                             && inputWordEncodings.contains(e)) {
                         encodingMatches++;
                     }
@@ -459,7 +468,7 @@ public class SpellSuggestionsBuilder {
                     suggestionMap);
         } else {
             addSuggestions(taskContext,
-                    fieldValues(searchHit, FIELD_STATS),
+                    fieldValues(searchHit, FIELD_STATS_FIELD),
                     inputTokenType,
                     matchTokenType,
                     matchedWord,
@@ -479,13 +488,13 @@ public class SpellSuggestionsBuilder {
                                           TokenType matchTokenType,
                                           String matchedWord,
                                           Map<String, Suggestion> suggestionMap) {
-        List<Object> originalWordsInfoList = fieldValues(searchHit, FIELD_ORIGINAL_WORDS);
+        List<Object> originalWordsInfoList = fieldValues(searchHit, ORIGINAL_WORDS_FIELD);
 
         for (Object originalWordData : originalWordsInfoList) {
             Map<String, Object> originalWordInfo = (Map<String, Object>) originalWordData;
-            String originalWord = (String) originalWordInfo.get(FIELD_WORD);
-            String originalDisplay = (String) originalWordInfo.get(FIELD_DISPLAY);
-            int originalWordCount = (int) originalWordInfo.getOrDefault(FIELD_TOTAL_COUNT, 0);
+            String originalWord = (String) originalWordInfo.get(WORD_FIELD);
+            String originalDisplay = (String) originalWordInfo.get(DISPLAY_FIELD);
+            int originalWordCount = (int) originalWordInfo.getOrDefault(TOTAL_COUNT_FIELD, 0);
 //            double originalWordWeight = (double) originalWordInfo.getOrDefault(FIELD_TOTAL_WEIGHT, 0.0d);
 
             if (originalDisplay == null) {
@@ -493,11 +502,11 @@ public class SpellSuggestionsBuilder {
             }
 
             boolean inScope = false;
-            List<Object> fieldStatsList = (List<Object>) originalWordInfo.getOrDefault(FIELD_STATS, null);
+            List<Object> fieldStatsList = (List<Object>) originalWordInfo.getOrDefault(FIELD_STATS_FIELD, null);
             if (fieldStatsList != null) {
                 for (Object fieldStats : fieldStatsList) {
                     Map<String, Object> fieldStatsData = (Map<String, Object>) fieldStats;
-                    String fieldName = (String) fieldStatsData.get(FIELD_FIELD_NAME);
+                    String fieldName = (String) fieldStatsData.get(FIELD_NAME_FIELD);
 
                     if (taskContext.inScope(fieldName)) {
                         inScope = true;
@@ -545,10 +554,10 @@ public class SpellSuggestionsBuilder {
         fieldStatsList
                 .stream()
                 .map(fieldStats -> (Map<String, Object>) fieldStats)
-                .filter(fieldStats -> taskContext.inScope((String) fieldStats.get(FIELD_FIELD_NAME)))
+                .filter(fieldStats -> taskContext.inScope((String) fieldStats.get(FIELD_NAME_FIELD)))
                 .map(fieldStats -> {
-                    String fieldName = (String) fieldStats.get(FIELD_FIELD_NAME);
-                    int fieldCount = (Integer) fieldStats.get(FIELD_TOTAL_COUNT);
+                    String fieldName = (String) fieldStats.get(FIELD_NAME_FIELD);
+                    int fieldCount = (Integer) fieldStats.get(TOTAL_COUNT_FIELD);
                     float occurrence = (fieldCount * 100.0f) / totalCount;
 
                     if (occurrence < 1.0f) {
@@ -637,27 +646,17 @@ public class SpellSuggestionsBuilder {
 
     @SuppressWarnings("unchecked")
     private <V> V fieldValue(SearchHit searchHit, String field, V defaultValue) {
-//        SearchHitField searchHitField = searchHit.field(field);
-//        if (searchHitField != null) {
-//            return searchHitField.value();
-//        } else {
         Object value = searchHit.getSource().get(field);
         if (value != null) {
             return (V) value;
         }
 
         return defaultValue;
-//        }
     }
 
     @SuppressWarnings("unchecked")
     private List<Object> fieldValues(SearchHit searchHit, String field) {
-//        SearchHitField searchHitField = searchHit.field(field);
-//        if (searchHitField != null) {
-//            return searchHitField.values();
-//        } else {
         return (List<Object>) searchHit.getSource().get(field);
-//        }
     }
 
     @SuppressWarnings("unchecked")
@@ -689,18 +688,18 @@ public class SpellSuggestionsBuilder {
 
             String type = searchHit.type();
 
-            String suggestedWord = fieldValue(searchHit, FIELD_WORD, null);
+            String suggestedWord = fieldValue(searchHit, WORD_FIELD, null);
 
             String displayWord;
 
             TokenType matchTokenType;
 
-            if (Constants.UNIGRAM_DID_YOU_MEAN_INDEX_TYPE.equals(type)) {
+            if (WordIndexConstants.UNIGRAM_WORD_INDEX_TYPE.equals(type)) {
                 displayWord = suggestedWord;
                 matchTokenType = TokenType.Uni;
             } else {
-                String suggestedWord1 = fieldValue(searchHit, FIELD_WORD_1, null);
-                String suggestedWord2 = fieldValue(searchHit, FIELD_WORD_2, null);
+                String suggestedWord1 = fieldValue(searchHit, WORD_1_FIELD, null);
+                String suggestedWord2 = fieldValue(searchHit, WORD_2_FIELD, null);
                 displayWord = suggestedWord1 + " " + suggestedWord2;
                 matchTokenType = TokenType.Bi;
 
@@ -737,9 +736,9 @@ public class SpellSuggestionsBuilder {
         for (int i = 0; i < hitsCount; i++) {
             SearchHit searchHit = searchHits[i];
 
-            String matchedWord = fieldValue(searchHit, FIELD_WORD, null);
+            String matchedWord = fieldValue(searchHit, WORD_FIELD, null);
 
-            List<Object> suggestedWordEncodings = fieldValues(searchHit, FIELD_ENCODINGS);
+            List<Object> suggestedWordEncodings = fieldValues(searchHit, ENCODINGS_FIELD);
 
             // check for exact suggestion
             candidateStats[i] = buildCandidateStats(inputWord, matchedWord, matchedWord, searchHit.score(), suggestedWordEncodings, inputWordEncodings);
@@ -878,17 +877,7 @@ public class SpellSuggestionsBuilder {
         suggestionMap.put(key, suggestion);
     }
 
-    private static <T> CompletableFuture<List<T>> sequence(List<CompletableFuture<T>> futures) {
-        CompletableFuture<Void> allDoneFuture =
-                CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()]));
-        return allDoneFuture.thenApply(v ->
-                futures.stream().
-                        map(CompletableFuture::join).
-                        collect(Collectors.toList())
-        );
-    }
-
-    static class TaskContext {
+    private static class TaskContext {
         final Client client;
         final String[] indices;
         final Set<? extends SuggestionScope> suggestionScopes;
@@ -898,7 +887,7 @@ public class SpellSuggestionsBuilder {
         final List<String> queryKeys = new ArrayList<>();
         final List<CompletableFuture<SuggestionSet>> suggestionResponses = new ArrayList<>();
 
-        public TaskContext(Client client, String[] indices, Set<? extends SuggestionScope> suggestionScopes) {
+        TaskContext(Client client, String[] indices, Set<? extends SuggestionScope> suggestionScopes) {
             this.client = client;
             this.indices = indices;
             this.suggestionScopes = suggestionScopes;
@@ -913,11 +902,11 @@ public class SpellSuggestionsBuilder {
             }
         }
 
-        public boolean inScope(String name) {
+        boolean inScope(String name) {
             return (suggestionScopeMap != null && suggestionScopeMap.containsKey(name));
         }
 
-        public SuggestionScope getScope(String name) {
+        SuggestionScope getScope(String name) {
             if (suggestionScopeMap != null) {
                 return suggestionScopeMap.get(name);
             }
@@ -926,11 +915,11 @@ public class SpellSuggestionsBuilder {
         }
     }
 
-    static class QueryBuilderHolder {
+    private static class QueryBuilderHolder {
         final Set<String> encodings;
         final QueryBuilder[] queryBuilders;
 
-        public QueryBuilderHolder(Set<String> encodings, QueryBuilder[] queryBuilders) {
+        QueryBuilderHolder(Set<String> encodings, QueryBuilder[] queryBuilders) {
             this.encodings = encodings;
             this.queryBuilders = queryBuilders;
         }

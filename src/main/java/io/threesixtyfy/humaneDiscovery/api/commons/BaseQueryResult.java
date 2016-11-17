@@ -5,7 +5,6 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Streamable;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentBuilderString;
 
 import java.io.IOException;
 
@@ -29,10 +28,6 @@ public abstract class BaseQueryResult implements Streamable, ToXContent {
         out.writeDouble(score);
     }
 
-    public static class Fields {
-        static final XContentBuilderString _SCORE = new XContentBuilderString("_score");
-    }
-
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startObject();
@@ -50,4 +45,8 @@ public abstract class BaseQueryResult implements Streamable, ToXContent {
     }
 
     protected abstract void buildXContent(XContentBuilder builder, Params params) throws IOException;
+
+    public static class Fields {
+        static final String _SCORE = "_score";
+    }
 }

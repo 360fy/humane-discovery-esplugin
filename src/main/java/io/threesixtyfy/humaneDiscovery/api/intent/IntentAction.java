@@ -9,7 +9,7 @@ public class IntentAction extends Action<IntentRequest, IntentResponse, IntentRe
 
     public static final String NAME = "indices:data/read/intent";
 
-    protected IntentAction() {
+    private IntentAction() {
         super(NAME);
     }
 

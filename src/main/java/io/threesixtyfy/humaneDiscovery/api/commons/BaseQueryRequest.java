@@ -14,20 +14,18 @@ import java.util.Arrays;
 
 public abstract class BaseQueryRequest<R extends BaseQuerySource, T extends BaseQueryRequest<R, T>> extends ActionRequest<T> implements IndicesRequest.Replaceable {
 
-    public static final IndicesOptions DEFAULT_INDICES_OPTIONS = IndicesOptions.strictExpandOpenAndForbidClosed();
-
+    private static final IndicesOptions INDICES_OPTIONS_DEFAULT = IndicesOptions.strictExpandOpenAndForbidClosed();
+    protected final R querySource;
     protected String[] indices;
     protected String[] types = Strings.EMPTY_ARRAY;
-    protected IndicesOptions indicesOptions = DEFAULT_INDICES_OPTIONS;
-
-    protected final R querySource;
+    protected IndicesOptions indicesOptions = INDICES_OPTIONS_DEFAULT;
 
     public BaseQueryRequest() {
         this.querySource = newQuerySource();
     }
 
     public BaseQueryRequest(T queryRequest, ActionRequest originalRequest) {
-        super(originalRequest);
+        super();
         this.querySource = (R) queryRequest.querySource;
         this.indices = queryRequest.indices;
         this.indicesOptions = queryRequest.indicesOptions;

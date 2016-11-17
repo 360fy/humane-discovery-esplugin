@@ -69,11 +69,10 @@ public class Conjunct {
     }
 
     public static class ConjunctBuilder {
-        private boolean first = true;
-        private int length;
         private final StringBuilder conjunctKey = new StringBuilder();
         private final List<String> tokens = new ArrayList<>();
-
+        private boolean first = true;
+        private int length;
         private int tokenStart = -1;
         private int tokenEnd = -1;
 
