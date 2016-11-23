@@ -1,10 +1,12 @@
 package io.threesixtyfy.humaneDiscovery.query;
 
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.common.ParseField;
 import org.elasticsearch.common.ParsingException;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.index.query.AbstractQueryBuilder;
@@ -22,7 +24,7 @@ import java.util.Set;
 
 public class MultiHumaneQueryBuilder extends BaseHumaneQueryBuilder<MultiHumaneQueryBuilder> {
     public static final String NAME = "multi_humane_query";
-
+    private static final Logger logger = Loggers.getLogger(MultiHumaneQueryBuilder.class);
     private static final ParseField FIELDS_FIELD = new ParseField("fields");
     private static final ParseField FIELD_FIELD = new ParseField("field");
     private static final ParseField PATH_FIELD = new ParseField("path");
@@ -205,6 +207,10 @@ public class MultiHumaneQueryBuilder extends BaseHumaneQueryBuilder<MultiHumaneQ
         Query query = parse(context, context.getClient(), this.queryFields);
         if (query == null) {
             return matchNoDocsQuery();
+        }
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("Query: {}", query);
         }
 
         return query;

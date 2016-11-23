@@ -141,7 +141,7 @@ public class TransportIntentAction extends HandledTransportAction<IntentRequest,
 
                         Map<String, SuggestionSet> suggestionsMap = suggestionsBuilder.fetchSuggestions(client,
                                 uniqueConjuncts.values(),
-                                new String[]{inputIndices[0] + WordIndexConstants.WORD_INDEX_STORE_SUFFIX},
+                                new String[]{inputIndices[0].getName() + WordIndexConstants.WORD_INDEX_STORE_SUFFIX},
                                 lookupIntentEntities);
 
                         List<SuggestionClassPermutation> suggestionClassPermutations = new ArrayList<>();

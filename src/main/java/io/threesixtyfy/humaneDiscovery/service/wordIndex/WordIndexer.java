@@ -268,12 +268,16 @@ public class WordIndexer extends Thread {
     }
 
     private void awaitBulkComplete() {
-        bulk.flush();
+        try {
+            bulk.flush();
 
-        int count;
-        while ((count = pendingBulkItemCount.get()) > 0) {
-            logger.info("waiting bulk to get complete, count: {}", count);
-            LockSupport.parkNanos(HUNDRED_MILLISECOND_IN_NANOS);
+            int count;
+            while ((count = pendingBulkItemCount.get()) > 0) {
+                logger.info("waiting bulk to get complete, count: {}", count);
+                LockSupport.parkNanos(HUNDRED_MILLISECOND_IN_NANOS);
+            }
+        } catch (IllegalStateException ise) {
+            logger.warn("Bulk is already closed");
         }
     }
 }

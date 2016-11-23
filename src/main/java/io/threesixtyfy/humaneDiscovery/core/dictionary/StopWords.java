@@ -13,7 +13,7 @@ public class StopWords {
             "that", "the", "their", "then", "there", "these",
             "they", "this", "to", "was", "will", "with",
             "tablet", "tablets", "injection", "injections", "syrup",
-            "capsule", "capsules"
+            "capsule", "capsules", "cardekho"
     ));
 
     public static boolean contains(String word) {

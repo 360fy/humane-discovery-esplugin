@@ -6,6 +6,7 @@ import io.threesixtyfy.humaneDiscovery.core.conjuncts.Conjunct;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.Disjunct;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.DisjunctsBuilder;
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.TokensBuilder;
+import io.threesixtyfy.humaneDiscovery.core.smartMinMatch.SmartMinMatchQuery;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.DefaultSuggestionScope;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.Suggestion;
@@ -61,7 +62,7 @@ public abstract class BaseHumaneQueryBuilder<T extends BaseHumaneQueryBuilder<T>
     protected static final ParseField VERNACULAR_ONLY_FIELD = new ParseField("vernacularOnly");
     protected static final ParseField INTENT_INDEX_FIELD = new ParseField("intentIndex");
     protected static final ParseField INTENT_FIELDS_FIELD = new ParseField("intentFields");
-
+    private static final Logger logger = Loggers.getLogger(BaseHumaneQueryBuilder.class);
     private static final String MATCHING_NO_DOCS_REASON = "No matching docs";
 
     private static final float TIE_BREAKER_MULTIPLIER_DEFAULT = 1.0f;
@@ -87,8 +88,6 @@ public abstract class BaseHumaneQueryBuilder<T extends BaseHumaneQueryBuilder<T>
     private static final SuggestionsBuilder SUGGESTIONS_BUILDER = SuggestionsBuilder.INSTANCE();
     private static final TokensBuilder TOKENS_BUILDER = TokensBuilder.INSTANCE();
     private static final DisjunctsBuilder DISJUNCTS_BUILDER = DisjunctsBuilder.INSTANCE();
-
-    private final Logger logger = Loggers.getLogger(BaseHumaneQueryBuilder.class);
 
     protected String queryText;
     protected String intentIndex;
@@ -381,14 +380,14 @@ public abstract class BaseHumaneQueryBuilder<T extends BaseHumaneQueryBuilder<T>
 
     private int minimumShouldMatch(int numTokens) {
         if (numTokens <= 2) {
-            return numTokens;
-        } else if (numTokens <= 4) {
-            return (int) Math.floor(0.90 * numTokens);
-        } else if (numTokens <= 6) {
-            return (int) Math.floor(0.80 * numTokens);
-        } else {
+            return 1;
+        } else if (numTokens > 2 && numTokens <= 4) {
+            return 2; //(int) Math.floor(0.90 * numTokens);
+        } else { //if (numTokens > 4) {
+            return 3; //(int) Math.floor(0.80 * numTokens);
+        } /*else {
             return (int) Math.floor(0.70 * numTokens);
-        }
+        }*/
     }
 
     @SuppressWarnings("unchecked")
@@ -439,7 +438,7 @@ public abstract class BaseHumaneQueryBuilder<T extends BaseHumaneQueryBuilder<T>
             }
 
             Map<String, Conjunct> conjunctMap = new HashMap<>();
-            Disjunct[] disjuncts = DISJUNCTS_BUILDER.build(tokens, conjunctMap, numTokens < 6 ? 3 : 1);
+            Disjunct[] disjuncts = DISJUNCTS_BUILDER.build(tokens, conjunctMap, /*numTokens < 6 ? 3 : 1*/1);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("For Index/Type: {}/{} and tokens: {}, got disjuncts: {} in {}ms", indexName, queryTypes, tokens, Arrays.toString(disjuncts), (System.currentTimeMillis() - startTime));
@@ -553,23 +552,25 @@ public abstract class BaseHumaneQueryBuilder<T extends BaseHumaneQueryBuilder<T>
                 if (conjunctQueries.size() == 1) {
                     queries.add(conjunctQueries.get(0));
                 } else {
-                    BooleanQuery.Builder disjunctQueryBuilder = new BooleanQuery.Builder();
+                    SmartMinMatchQuery.Builder disjunctQueryBuilder = new SmartMinMatchQuery.Builder();
+//                    BooleanQuery.Builder disjunctQueryBuilder = new BooleanQuery.Builder();
                     for (Query conjunctQuery : conjunctQueries) {
-                        disjunctQueryBuilder.add(conjunctQuery, BooleanClause.Occur.SHOULD);
+//                        disjunctQueryBuilder.add(conjunctQuery, BooleanClause.Occur.SHOULD);
+                        disjunctQueryBuilder.add(conjunctQuery);
                     }
 
-                    // when we can pick field level weight from suggestion, then we can be okay with minimum match count as 1
-                    // that should be okay for search results, but may not be for autocomplete
-                    if (shouldClauseCount > 0) {
-                        int minimumNumberShouldMatch = Math.min(shouldClauseCount - stopWordsCount, shouldClauseCount);
-
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("Setting {} should clauses setting min required count:  should: {}, min: {}, stop: {}", shouldClauseCount, minimumNumberShouldMatch, stopWordsCount);
-                        }
-
-                        disjunctQueryBuilder.setMinimumNumberShouldMatch(minimumNumberShouldMatch);
-
-                    }
+//                    // when we can pick field level weight from suggestion, then we can be okay with minimum match count as 1
+//                    // that should be okay for search results, but may not be for autocomplete
+//                    if (shouldClauseCount > 0) {
+//                        int minimumNumberShouldMatch = minimumShouldMatch(Math.min(shouldClauseCount - stopWordsCount, shouldClauseCount));
+//
+//                        if (logger.isDebugEnabled()) {
+//                            logger.debug("Setting {} should clauses setting min required count:  should: {}, min: {}, stop: {}", shouldClauseCount, minimumNumberShouldMatch, stopWordsCount);
+//                        }
+//
+//                        disjunctQueryBuilder.setMinimumNumberShouldMatch(minimumNumberShouldMatch);
+//
+//                    }
 
                     queries.add(disjunctQueryBuilder.build());
                 }
