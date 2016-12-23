@@ -1,34 +1,30 @@
 package io.threesixtyfy.humaneDiscovery.api.intent;
 
-import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryResponse;
+import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 
 import java.io.IOException;
 
-public class IntentResponse extends BaseQueryResponse<IntentResult> {
+public class IntentResponse extends QueryResponse<IntentResult> {
 
     public static final IntentResult[] INTENT_RESULTS_EMPTY = new IntentResult[0];
     public static final String[] TOKENS_EMPTY = new String[0];
 
     private String[] tokens = TOKENS_EMPTY;
 
-    public IntentResponse() {
-        super();
+    public IntentResponse(String searchText) {
+        super(searchText);
     }
 
-    public IntentResponse(long tookInMillis) {
-        super(tookInMillis);
-    }
-
-    public IntentResponse(String[] tokens, long tookInMillis) {
-        super(tookInMillis);
+    public IntentResponse(String searchText, String[] tokens) {
+        this(searchText);
         this.tokens = tokens;
     }
 
-    public IntentResponse(String[] tokens, IntentResult[] results, long tookInMillis) {
-        super(results, tookInMillis);
+    public IntentResponse(String searchText, String[] tokens, IntentResult[] results) {
+        super(searchText, results, 0);
         this.tokens = tokens;
     }
 

@@ -1,7 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.core.conjuncts;
 
-import io.threesixtyfy.humaneDiscovery.core.dictionary.StopWords;
-
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -54,28 +52,28 @@ public class DisjunctsBuilder {
                 disjuncts.add(Disjunct.builder().add(conjunctBuilder.build(uniqueConjuncts)).build());
 
                 // if any of the token is stop word, then we build another disjunct ignoring that token
-                boolean stopWord = false;
-                for (String token : tokens) {
-                    if (StopWords.contains(token)) {
-                        stopWord = true;
-                        break;
-                    }
-                }
-
-                if (stopWord) {
-                    conjunctBuilder = Conjunct.builder();
-
-                    position = tokenStartIndex;
-                    for (String token : tokens) {
-                        if (!StopWords.contains(token)) {
-                            conjunctBuilder.add(token, position);
-                        }
-
-                        position++;
-                    }
-
-                    disjuncts.add(Disjunct.builder().add(conjunctBuilder.build(uniqueConjuncts)).build());
-                }
+//                boolean stopWord = false;
+//                for (String token : tokens) {
+//                    if (StopWords.containsInput(token)) {
+//                        stopWord = true;
+//                        break;
+//                    }
+//                }
+//
+//                if (stopWord) {
+//                    conjunctBuilder = Conjunct.builder();
+//
+//                    position = tokenStartIndex;
+//                    for (String token : tokens) {
+//                        if (!StopWords.containsInput(token)) {
+//                            conjunctBuilder.add(token, position);
+//                        }
+//
+//                        position++;
+//                    }
+//
+//                    disjuncts.add(Disjunct.builder().add(conjunctBuilder.build(uniqueConjuncts)).build());
+//                }
             }
 
             Disjunct[] suffixDisjuncts = build(tokenStartIndex + 1, tokens.subList(1, size), uniqueConjuncts, maxLength);

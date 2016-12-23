@@ -9,12 +9,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder.DUMMY_FIELD;
-import static io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder.HUMANE_QUERY_ANALYZER;
-
 public class TokensBuilder {
 
     private static final TokensBuilder INSTANCE = new TokensBuilder();
+    private static final String HUMANE_QUERY_ANALYZER = "humane_query_analyzer";
+    private static final String DUMMY_FIELD = "dummy_field";
 
     private TokensBuilder() {
     }

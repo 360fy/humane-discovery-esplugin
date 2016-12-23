@@ -1,40 +1,39 @@
 package io.threesixtyfy.humaneDiscovery.plugin;
 
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneDescriptiveTextAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneEdgeGramQueryAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneKeywordAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneQueryAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneShingleTextAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneStandardAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneTextAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.analyzer.HumaneVernacularAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.api.didYouMean.DidYouMeanAction;
-import io.threesixtyfy.humaneDiscovery.api.didYouMean.DidYouMeanRestAction;
-import io.threesixtyfy.humaneDiscovery.api.didYouMean.TransportDidYouMeanAction;
+import io.threesixtyfy.humaneDiscovery.api.autocomplete.AutocompleteAction;
+import io.threesixtyfy.humaneDiscovery.api.autocomplete.AutocompleteRestAction;
+import io.threesixtyfy.humaneDiscovery.api.autocomplete.TransportAutocompleteAction;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneDescriptiveTextAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneEdgeGramQueryAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneKeywordAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneQueryAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneShingleTextAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneStandardAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneTextAnalyzerProvider;
+import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneVernacularAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.api.intent.IntentAction;
 import io.threesixtyfy.humaneDiscovery.api.intent.IntentRestAction;
 import io.threesixtyfy.humaneDiscovery.api.intent.TransportIntentAction;
-import io.threesixtyfy.humaneDiscovery.query.HumaneQueryBuilder;
-import io.threesixtyfy.humaneDiscovery.query.MultiHumaneQueryBuilder;
-import io.threesixtyfy.humaneDiscovery.service.wordIndex.IndexEventListenerImpl;
-import io.threesixtyfy.humaneDiscovery.service.wordIndex.IndexingOperationListenerImpl;
-import io.threesixtyfy.humaneDiscovery.service.wordIndex.LifecycleService;
-import io.threesixtyfy.humaneDiscovery.service.wordIndex.SharedChannel;
-import io.threesixtyfy.humaneDiscovery.service.wordIndex.WordIndexConstants;
-import io.threesixtyfy.humaneDiscovery.tokenFilter.EdgeGramTokenFilterFactory;
-import io.threesixtyfy.humaneDiscovery.tokenFilter.HumaneTokenFilterFactory;
-import io.threesixtyfy.humaneDiscovery.tokenFilter.PrefixTokenFilterFactory;
-import org.apache.commons.lang3.StringUtils;
+import io.threesixtyfy.humaneDiscovery.api.search.SearchAction;
+import io.threesixtyfy.humaneDiscovery.api.search.SearchRestAction;
+import io.threesixtyfy.humaneDiscovery.api.search.TransportSearchAction;
+import io.threesixtyfy.humaneDiscovery.es.query.HumaneQueryBuilder;
+import io.threesixtyfy.humaneDiscovery.es.query.MultiHumaneQueryBuilder;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.IndexEventListenerImpl;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.IndexingOperationListenerImpl;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.LifecycleService;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.SharedChannel;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants;
+import io.threesixtyfy.humaneDiscovery.es.tokenFilter.EdgeGramTokenFilterFactory;
+import io.threesixtyfy.humaneDiscovery.es.tokenFilter.PrefixTokenFilterFactory;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.service.ClusterService;
-import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Setting;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.IndexModule;
 import org.elasticsearch.index.analysis.AnalyzerProvider;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
@@ -68,13 +67,23 @@ public class HumaneDiscoveryPlugin extends Plugin implements AnalysisPlugin, Act
     }
 
     public void onIndexModule(IndexModule indexModule) {
-        logger.info("onIndexModule for: {}", indexModule.getIndex().getName());
+        if (logger.isDebugEnabled()) {
+            logger.debug("onIndexModule for: {}", indexModule.getIndex().getName());
+        }
 
-        if (indexModule.getSettings().getAsBoolean(WordIndexConstants.WORD_INDEX_ENABLED_SETTING, Boolean.FALSE)) {
-            logger.info("Adding index event listener for: {}", indexModule.getIndex().getName());
+//        indexModule.addIndexOperationListener(new ExtractIntentListener(indexModule.getIndex()));
+
+        if (indexModule.getSettings().getAsBoolean(TokenIndexConstants.TOKEN_INDEX_ENABLED_SETTING, Boolean.FALSE)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Adding index event listener for: {}", indexModule.getIndex().getName());
+            }
+
             indexModule.addIndexEventListener(new IndexEventListenerImpl(indexModule.getIndex(), this.sharedChannel));
 
-            logger.info("Adding index operation listener for: {}", indexModule.getIndex().getName());
+            if (logger.isDebugEnabled()) {
+                logger.debug("Adding index operation listener for: {}", indexModule.getIndex().getName());
+            }
+
             try {
                 Analyzer analyzer = this.getAnalyzers().get(HumaneStandardAnalyzerProvider.NAME).get(null, HumaneStandardAnalyzerProvider.NAME).get();
                 indexModule.addIndexOperationListener(new IndexingOperationListenerImpl(indexModule.getIndex(), this.sharedChannel, analyzer));
@@ -88,7 +97,7 @@ public class HumaneDiscoveryPlugin extends Plugin implements AnalysisPlugin, Act
     public Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> getTokenFilters() {
         Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> map = new HashMap<>();
 
-        map.put(HumaneTokenFilterFactory.NAME, HumaneTokenFilterFactory::new);
+//        map.put(HumaneTokenFilterFactory.NAME, HumaneTokenFilterFactory::new);
         map.put(PrefixTokenFilterFactory.NAME, PrefixTokenFilterFactory::new);
         map.put(EdgeGramTokenFilterFactory.NAME, EdgeGramTokenFilterFactory::new);
 
@@ -123,20 +132,23 @@ public class HumaneDiscoveryPlugin extends Plugin implements AnalysisPlugin, Act
 
     @Override
     public List<ActionHandler<? extends ActionRequest<?>, ? extends ActionResponse>> getActions() {
-        List<ActionHandler<? extends ActionRequest<?>, ? extends ActionResponse>> actions = new ArrayList<>(2);
+        List<ActionHandler<? extends ActionRequest<?>, ? extends ActionResponse>> actions = new ArrayList<>(3);
 
-        actions.add(new ActionHandler<>(DidYouMeanAction.INSTANCE, TransportDidYouMeanAction.class));
         actions.add(new ActionHandler<>(IntentAction.INSTANCE, TransportIntentAction.class));
+        actions.add(new ActionHandler<>(SearchAction.INSTANCE, TransportSearchAction.class));
+        actions.add(new ActionHandler<>(AutocompleteAction.INSTANCE, TransportAutocompleteAction.class));
 
         return actions;
     }
 
     @Override
     public List<Class<? extends RestHandler>> getRestHandlers() {
-        List<Class<? extends RestHandler>> restHandlers = new ArrayList<>(2);
+        List<Class<? extends RestHandler>> restHandlers = new ArrayList<>(3);
 
         restHandlers.add(IntentRestAction.class);
-        restHandlers.add(DidYouMeanRestAction.class);
+        restHandlers.add(SearchRestAction.class);
+        restHandlers.add(AutocompleteRestAction.class);
+//        restHandlers.add(DidYouMeanRestAction.class);
 
         return restHandlers;
     }
@@ -149,7 +161,7 @@ public class HumaneDiscoveryPlugin extends Plugin implements AnalysisPlugin, Act
     @Override
     public List<Setting<?>> getSettings() {
         List<Setting<?>> settings = new ArrayList<>();
-        settings.add(Setting.boolSetting(WordIndexConstants.WORD_INDEX_ENABLED_SETTING, false, Setting.Property.IndexScope));
+        settings.add(Setting.boolSetting(TokenIndexConstants.TOKEN_INDEX_ENABLED_SETTING, false, Setting.Property.IndexScope));
 
         return settings;
     }

@@ -1,8 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.api.intent;
 
-import io.threesixtyfy.humaneDiscovery.api.commons.BaseQueryResult;
-import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.MatchLevel;
-import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.TokenType;
+import io.threesixtyfy.humaneDiscovery.api.commons.BaseResult;
+import io.threesixtyfy.humaneDiscovery.core.tagForest.MatchLevel;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentBuilder;
@@ -15,7 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 // entityClass to array of results for that entity class
-public class IntentResult extends BaseQueryResult {
+public class IntentResult extends BaseResult {
 
     private Map<String, List<IntentClassResult>> intentClasses;
 
@@ -26,7 +25,8 @@ public class IntentResult extends BaseQueryResult {
     }
 
     public IntentResult(Map<String, List<IntentClassResult>> intentClasses, double score) {
-        super(score);
+//        super(score);
+        // TODO: maintain score here only
         this.intentClasses = intentClasses;
         this.display = new HashMap<>();
         intentClasses.entrySet().forEach(v -> display.put(v.getKey(), v.getValue().get(0).display));
@@ -42,7 +42,6 @@ public class IntentResult extends BaseQueryResult {
 
     @Override
     public void readFrom(StreamInput in) throws IOException {
-        super.readFrom(in);
         int numClasses = in.readVInt();
 
         this.intentClasses = new HashMap<>(numClasses);
@@ -65,7 +64,6 @@ public class IntentResult extends BaseQueryResult {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        super.writeTo(out);
         out.writeVInt(intentClasses.size());
         for (Map.Entry<String, List<IntentClassResult>> entry : intentClasses.entrySet()) {
             out.writeString(entry.getKey());
@@ -107,8 +105,8 @@ public class IntentResult extends BaseQueryResult {
         static final String SCORE = "score";
         static final String TOKEN = "token";
         static final String MATCH_LEVEL = "matchLevel";
-        static final String INPUT_TOKEN_TYPE = "inputTokenType";
-        static final String MATCH_TOKEN_TYPE = "matchTokenType";
+        static final String INPUT_TOKEN_TYPE = "inputTokenLength";
+        static final String MATCH_TOKEN_TYPE = "matchTokenLength";
         static final String EDIT_DISTANCE = "editDistance";
         static final String INTENT_TOKENS = "intentTokens";
         static final String INTENT_CLASSES = "intentClasses";
@@ -197,19 +195,19 @@ public class IntentResult extends BaseQueryResult {
         private String token;
         private String display;
         private MatchLevel matchLevel;
-        private TokenType inputTokenType;
-        private TokenType matchTokenType;
+        private int inputTokenLength;
+        private int matchTokenLength;
         private int editDistance;
         private double score;
 
         public IntentToken() {
         }
 
-        public IntentToken(String token, String display, TokenType inputTokenType, TokenType matchTokenType, MatchLevel matchLevel, int editDistance, double score) {
+        public IntentToken(String token, String display, int inputTokenLength, int matchTokenLength, MatchLevel matchLevel, int editDistance, double score) {
             this.token = token;
             this.display = display;
-            this.inputTokenType = inputTokenType;
-            this.matchTokenType = matchTokenType;
+            this.inputTokenLength = inputTokenLength;
+            this.matchTokenLength = matchTokenLength;
             this.matchLevel = matchLevel;
             this.editDistance = editDistance;
             this.score = score;
@@ -227,12 +225,12 @@ public class IntentResult extends BaseQueryResult {
             return matchLevel;
         }
 
-        public TokenType getInputTokenType() {
-            return inputTokenType;
+        public int getInputTokenLength() {
+            return inputTokenLength;
         }
 
-        public TokenType getMatchTokenType() {
-            return matchTokenType;
+        public int getMatchTokenLength() {
+            return matchTokenLength;
         }
 
         public int getEditDistance() {
@@ -247,8 +245,8 @@ public class IntentResult extends BaseQueryResult {
             token = in.readString();
             display = in.readString();
             matchLevel = MatchLevel.valueOf(in.readString());
-            inputTokenType = TokenType.valueOf(in.readString());
-            matchTokenType = TokenType.valueOf(in.readString());
+            inputTokenLength = in.readInt();
+            matchTokenLength = in.readInt();
             editDistance = in.readVInt();
             score = in.readDouble();
         }
@@ -257,8 +255,8 @@ public class IntentResult extends BaseQueryResult {
             out.writeString(token);
             out.writeString(display);
             out.writeString(matchLevel.name());
-            out.writeString(inputTokenType.name());
-            out.writeString(matchTokenType.name());
+            out.writeInt(inputTokenLength);
+            out.writeInt(matchTokenLength);
             out.writeVInt(editDistance);
             out.writeDouble(score);
         }
@@ -268,8 +266,8 @@ public class IntentResult extends BaseQueryResult {
             builder.field(Fields.TOKEN, token);
             builder.field(Fields.DISPLAY, display);
             builder.field(Fields.MATCH_LEVEL, matchLevel);
-            builder.field(Fields.INPUT_TOKEN_TYPE, inputTokenType);
-            builder.field(Fields.MATCH_TOKEN_TYPE, matchTokenType);
+            builder.field(Fields.INPUT_TOKEN_TYPE, inputTokenLength);
+            builder.field(Fields.MATCH_TOKEN_TYPE, matchTokenLength);
             builder.field(Fields.EDIT_DISTANCE, editDistance);
             builder.field(Fields.SCORE, score);
             builder.endObject();

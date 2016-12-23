@@ -189,7 +189,7 @@ final class MinShouldMatchSumScorer extends Scorer {
                 DisiWrapper headTop = head.top();
                 while (headTop.doc < target) {
                     final DisiWrapper evicted = insertTailWithOverFlow(headTop);
-                    // We know that the tail is full since it contains at most
+                    // We know that the tail is full since it containsInput at most
                     // minShouldMatch - 1 entries and we just moved at least minShouldMatch
                     // entries to it, so evicted is not null
                     evicted.doc = evicted.iterator.advance(target);

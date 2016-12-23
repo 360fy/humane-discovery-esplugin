@@ -1,6 +1,6 @@
 package io.threesixtyfy.humaneDiscovery.core.encoding;
 
-import io.threesixtyfy.humaneDiscovery.tokenFilter.StringTokenStream;
+import io.threesixtyfy.humaneDiscovery.es.tokenFilter.StringTokenStream;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.ngram.EdgeNGramTokenFilter;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -28,7 +28,7 @@ public class EdgeGramEncodingUtils {
         edgeGramTermAttribute = edgeGramTokenFilter.getAttribute(CharTermAttribute.class);
     }
 
-    private Set<String> buildEdgeGramEncodings(String word, Set<String> encodings, String prefix) {
+    public Set<String> buildEdgeGramEncodings(String word, Set<String> encodings, String prefix) {
         try {
             edgeGramInputTokenStream.setValue(word);
 

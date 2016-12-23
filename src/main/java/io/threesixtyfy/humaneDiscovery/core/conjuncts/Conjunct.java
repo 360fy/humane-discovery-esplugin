@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.core.conjuncts;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -9,11 +10,13 @@ public class Conjunct {
     private final int tokenEnd;
     private final int length;
     private final String key;
-    private final List<String> tokens;
+    //    private final String word;
+    private final String[] tokens;
 
-    public Conjunct(int length, String key, List<String> tokens, int tokenStart, int tokenEnd) {
+    public Conjunct(int length, String key, /*String word,*/ String[] tokens, int tokenStart, int tokenEnd) {
         this.length = length;
         this.key = key;
+//        this.word = word;
         this.tokens = tokens;
         this.tokenStart = tokenStart;
         this.tokenEnd = tokenEnd;
@@ -35,11 +38,15 @@ public class Conjunct {
         return key;
     }
 
+//    public String getWord() {
+//        return this.word;
+//    }
+
     public int getLength() {
         return length;
     }
 
-    public List<String> getTokens() {
+    public String[] getTokens() {
         return tokens;
     }
 
@@ -69,9 +76,10 @@ public class Conjunct {
     }
 
     public static class ConjunctBuilder {
-        private final StringBuilder conjunctKey = new StringBuilder();
+        //        private final StringBuilder word = new StringBuilder();
+        private final StringBuilder key = new StringBuilder();
         private final List<String> tokens = new ArrayList<>();
-        private boolean first = true;
+//        private boolean first = true;
         private int length;
         private int tokenStart = -1;
         private int tokenEnd = -1;
@@ -84,16 +92,18 @@ public class Conjunct {
                 tokenEnd = position;
             }
 
-            if (!first) {
-                conjunctKey.append("+");
-            }
+//            if (!first) {
+//                word.append(" ");
+////                key.append("+");
+//            }
 
-            // conjunctKey.append(tokenEnd); //.append(':').append(token);
-            conjunctKey.append(token);
+            // key.append(tokenEnd); //.append(':').append(token);
+//            word.append(token);
+            key.append(token);
 
             tokens.add(token);
 
-            first = false;
+//            first = false;
             length++;
 
             return this;
@@ -102,10 +112,11 @@ public class Conjunct {
         public ConjunctBuilder add(String prefix, Conjunct conjunct) {
             tokenStart = conjunct.tokenStart - 1;
             tokenEnd = conjunct.tokenEnd;
-            // conjunctKey.append(tokenStart)/*.append(':').append(prefix)*/.append("+").append(conjunct.getKey());
-            conjunctKey.append(prefix).append("+").append(conjunct.getKey());
+            // key.append(tokenStart)/*.append(':').append(prefix)*/.append("+").append(conjunct.getKey());
+            key.append(prefix)./*append("+").*/append(conjunct.getKey());
+//            word.append(prefix).append(" ").append(conjunct.getWord());
             tokens.add(prefix);
-            tokens.addAll(conjunct.getTokens());
+            Arrays.stream(conjunct.getTokens()).forEach(tokens::add);
             length = conjunct.length + 1;
 
             return this;
@@ -114,9 +125,10 @@ public class Conjunct {
         public ConjunctBuilder add(Conjunct conjunct, String suffix) {
             tokenStart = conjunct.tokenStart;
             tokenEnd = conjunct.tokenEnd + 1;
-            // conjunctKey.append(conjunct.getKey()).append("+").append(tokenEnd)/*.append(':').append(suffix)*/;
-            conjunctKey.append(conjunct.getKey()).append("+").append(suffix);
-            tokens.addAll(conjunct.getTokens());
+            // key.append(conjunct.getKey()).append("+").append(tokenEnd)/*.append(':').append(suffix)*/;
+//            word.append(conjunct.getWord()).append(" ").append(suffix);
+            key.append(conjunct.getKey())./*append("+").*/append(suffix);
+            Arrays.stream(conjunct.getTokens()).forEach(tokens::add);
             tokens.add(suffix);
             length = conjunct.length + 1;
 
@@ -124,9 +136,9 @@ public class Conjunct {
         }
 
         public Conjunct build(Map<String, Conjunct> conjunctMap) {
-            String key = conjunctKey.toString();
+            String key = this.key.toString();
             if (!conjunctMap.containsKey(key)) {
-                conjunctMap.put(key, new Conjunct(length, key, tokens, tokenStart, tokenEnd));
+                conjunctMap.put(key, new Conjunct(length, key, /*word.toString(),*/ tokens.toArray(new String[tokens.size()]), tokenStart, tokenEnd));
             }
 
             return conjunctMap.get(key);

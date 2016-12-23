@@ -1,6 +1,5 @@
 package io.threesixtyfy.humaneDiscovery.core.utils;
 
-import io.threesixtyfy.humaneDiscovery.core.spellSuggestion.SuggestionsBuilder;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
@@ -10,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class FastObjectPool<T> {
 
-    private static final Logger logger = Loggers.getLogger(SuggestionsBuilder.class);
+    private static final Logger logger = Loggers.getLogger(FastObjectPool.class);
 
     private final Holder<T>[] objects;
     private final int[] ringBuffer;
