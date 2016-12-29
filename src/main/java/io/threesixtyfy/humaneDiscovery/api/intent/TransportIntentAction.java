@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.api.intent;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
+import io.threesixtyfy.humaneDiscovery.core.instance.CarDekhoInstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.support.ActionFilters;
@@ -46,7 +47,7 @@ public class TransportIntentAction extends TransportQueryAction<IntentQuerySourc
     }
 
     protected IntentResponse response(IntentQueryRequest searchQueryRequest) throws IOException {
-        List<TagForest> tagForests = createIntents(searchQueryRequest);
+        List<TagForest> tagForests = createIntents(searchQueryRequest, new CarDekhoInstanceContext());
 
         return null;
     }

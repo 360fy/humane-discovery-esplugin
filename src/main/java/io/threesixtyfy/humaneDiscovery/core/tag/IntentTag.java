@@ -11,7 +11,7 @@ public class IntentTag extends TagWithCount<IntentTag> {
         super(TagType.Intent);
     }
 
-    public IntentTag(String name, int totalCount, List<List<String>> ancestors) {
+    public IntentTag(String name, int totalCount, Map<String, List<String>> ancestors) {
         super(TagType.Intent, name, totalCount, ancestors);
     }
 

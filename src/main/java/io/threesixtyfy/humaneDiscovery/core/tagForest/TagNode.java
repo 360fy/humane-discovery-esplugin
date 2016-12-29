@@ -6,7 +6,7 @@ import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
 
 // node is a single tag that is either part of TagGraph or exists alone in TagForest
-public class TagNode extends BaseForestMember {
+public class TagNode extends ForestMember {
 
     private static final Logger logger = Loggers.getLogger(TagNode.class);
 
@@ -14,7 +14,7 @@ public class TagNode extends BaseForestMember {
     private final String matchedToken;
 
     public TagNode(MatchSet matchSet) {
-        super(matchSet.getMatchLevel(), matchSet.getScore(), matchSet.getTags());
+        super(matchSet.getMatchLevel(), matchSet.getScore(), matchSet.getWeight(), matchSet.getTags());
 
         this.inputToken = matchSet.getInputTokens().get(0);
         this.matchedToken = matchSet.getMatchedTokens().get(0);

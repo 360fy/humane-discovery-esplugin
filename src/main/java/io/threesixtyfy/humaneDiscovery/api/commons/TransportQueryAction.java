@@ -1,5 +1,8 @@
 package io.threesixtyfy.humaneDiscovery.api.commons;
 
+import io.threesixtyfy.humaneDiscovery.core.cache.CacheService;
+import io.threesixtyfy.humaneDiscovery.core.instance.CarDekhoInstanceContext;
+import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.intent.IntentService;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import org.elasticsearch.action.ActionListener;
@@ -15,7 +18,9 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 public abstract class TransportQueryAction<QS extends QuerySource<QS>, QR extends QueryRequest<QS, QR>, SR extends QueryResponse> extends HandledTransportAction<QR, SR> {
@@ -23,6 +28,10 @@ public abstract class TransportQueryAction<QS extends QuerySource<QS>, QR extend
     protected final ClusterService clusterService;
     protected final IndicesService indicesService;
     protected final Client client;
+
+    protected final CacheService cacheService;
+
+    protected final Map<String, InstanceContext> instanceContexts = new HashMap<>();
 
     protected TransportQueryAction(Settings settings,
                                    String actionName,
@@ -39,14 +48,18 @@ public abstract class TransportQueryAction<QS extends QuerySource<QS>, QR extend
         this.clusterService = clusterService;
         this.client = client;
         this.indicesService = indicesService;
+
+        this.cacheService = new CacheService();
+
+        this.instanceContexts.put(CarDekhoInstanceContext.NAME, new CarDekhoInstanceContext());
     }
 
     protected long tookTime(long startTime) {
         return Math.max(1, System.currentTimeMillis() - startTime);
     }
 
-    protected List<TagForest> createIntents(QR queryRequest) throws IOException {
-        return IntentService.INSTANCE().createIntents(queryRequest.instance(),
+    protected List<TagForest> createIntents(QR queryRequest, InstanceContext instanceContext) throws IOException {
+        return IntentService.INSTANCE().createIntents(instanceContext,
                 queryRequest.querySource().query(),
                 clusterService,
                 indicesService,
@@ -80,6 +93,6 @@ public abstract class TransportQueryAction<QS extends QuerySource<QS>, QR extend
         });
     }
 
-    protected abstract SR response(QR queryRequest) throws IOException;
+    protected abstract SR response(QR queryRequest) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException;
 
 }

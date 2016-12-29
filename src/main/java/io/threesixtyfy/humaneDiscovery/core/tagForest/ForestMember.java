@@ -2,24 +2,37 @@ package io.threesixtyfy.humaneDiscovery.core.tagForest;
 
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 
-import java.util.List;
+import java.util.Collection;
 
-public interface ForestMember {
+public abstract class ForestMember extends ComparableMatch {
 
-    float getScore();
+    protected final Collection<BaseTag> tags;
 
-    MatchLevel getMatchLevel();
+    public ForestMember(MatchLevel matchLevel, float score, float weight, Collection<BaseTag> tags) {
+        super(matchLevel, score, weight);
+        this.tags = tags;
+    }
 
-    boolean containsMatched(MatchSet matchSet);
+    public Collection<BaseTag> getTags() {
+        return tags;
+    }
 
-    boolean containsInput(MatchSet matchSet);
+    public void mergeTags(MatchSet matchSet) {
+        for (BaseTag tag : matchSet.getTags()) {
+            if (!tags.contains(tag)) {
+                tags.add(tag);
+            }
+        }
+    }
 
-    boolean inputContainedBy(MatchSet matchSet);
+    public abstract boolean containsMatched(MatchSet matchSet);
 
-    boolean matchContainedBy(MatchSet matchSet);
+    public abstract boolean containsInput(MatchSet matchSet);
 
-    List<BaseTag> getTags();
+    public abstract boolean inputContainedBy(MatchSet matchSet);
 
-    boolean intersect(MatchSet matchSet);
+    public abstract boolean matchContainedBy(MatchSet matchSet);
+
+    public abstract boolean intersect(MatchSet matchSet);
 
 }

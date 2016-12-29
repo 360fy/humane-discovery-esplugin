@@ -2,6 +2,7 @@ package io.threesixtyfy.humaneDiscovery.api.search;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
+import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.IntentTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.KeywordTag;
@@ -95,8 +96,12 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
     private static final String MODEL_INTENT = MODEL_FIELD;
     private static final String VARIANT_FIELD = "variant";
     private static final String VARIANT_INTENT = VARIANT_FIELD;
+    private static final String CITY_INTENT = "city";
 
-    private static final List<String> CAR_NAME_INTENT_FIELDS = Arrays.asList(BRAND_INTENT, MODEL_INTENT, VARIANT_INTENT);
+    private static final String CITY_FIELD = "city";
+    private static final String LISTING_CITY_FIELD = "listingCity";
+
+//    private static final List<String> CAR_NAME_INTENT_FIELDS = Arrays.asList(BRAND_INTENT, MODEL_INTENT, VARIANT_INTENT);
 
     private static final String SORT_BY_NEW_CAR_TYPE_SCRIPT = "doc['_type'].value == 'new_car_model_page' || doc['_type'].value == 'new_car_variant_page' ? 0 : (doc['_type'].value == 'new_car_brand' ? 1 : (doc['_type'].value == 'new_car_model' ? 2 : 3))";
     private static final String DUMMY_FIELD = "dummy_field";
@@ -114,7 +119,10 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
             "transmissionType",
             "seatingCapacity"
     };
+
     private static final String PAGETYPE = "PAGETYPE";
+    private static final String PAGE_TYPE_FIELD = "pageType";
+    private static final String PAGE_NAME_FIELD = "name";
 
     private static Map<String, String> SectionTitles = new HashMap<>();
     private static Map<String, String> NewCarFields = new HashMap<>();
@@ -150,16 +158,24 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
         this.analyzer = indicesService.getAnalysis().getAnalyzer(HumaneStandardAnalyzerProvider.NAME);
     }
 
-    protected QueryResponse response(SearchQueryRequest searchQueryRequest) throws IOException {
+    protected QueryResponse response(SearchQueryRequest searchQueryRequest) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+        String key = searchQueryRequest.key();
+
+        QueryResponse queryResponse = null;//this.cacheService.get(key);
+
+//        if (queryResponse != null) {
+//            return queryResponse;
+//        }
+
         Index[] indices = indexNameExpressionResolver.concreteIndices(clusterService.state(), indicesOptions, StringUtils.lowerCase(searchQueryRequest.instance()) + "_store");
 
-        // TODO: depending on input type / section, fetch tag scopes
+        InstanceContext instanceContext = this.instanceContexts.get(searchQueryRequest.instance());
+
         // TODO: support type specific searches
-        QueryResponse queryResponse = null;
-        if (indices != null && indices.length == 1) {
+        if (instanceContext != null && indices != null && indices.length == 1) {
             Index index = indices[0];
 
-            List<TagForest> tagForests = createIntents(searchQueryRequest);
+            List<TagForest> tagForests = createIntents(searchQueryRequest, instanceContext);
             if (tagForests != null && tagForests.size() > 0) {
                 queryResponse = buildSearch(index.getName(), searchQueryRequest.querySource().section(), searchQueryRequest, tagForests.get(0));
             }
@@ -193,7 +209,11 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
 //            }
         }
 
-        return queryResponse == null ? new SingleSectionSearchResponse(searchQueryRequest.querySource().query()) : queryResponse;
+        queryResponse = queryResponse == null ? new SingleSectionSearchResponse(searchQueryRequest.querySource().query()) : queryResponse;
+
+//        this.cacheService.save(key, queryResponse);
+
+        return queryResponse;
     }
 
     // dealer section will come by car name or dealer name only, can be filtered by city
@@ -205,22 +225,18 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
 //
 //        if (dealerSearch(tagForest)) {
 //            // build only dealer section
-//            if (citySearch(tagForest)) {
+//            if (isCitySearch(tagForest)) {
 //                // show dealers for the city
 //            }
 //        }
 //
 //        if (usedCarSearch(tagForest)) {
 //            // build only used car section
-//            if (citySearch(tagForest)) {
+//            if (isCitySearch(tagForest)) {
 //                // show used cars for the city
 //            }
 //        }
 //
-//        if (citySearch(tagForest)) {
-//            // this would be mostly used cars or dealers only
-//        }
-
         // here we do all type of searches
         if (isCarNameSearch(tagForest)) {
             // extract page type
@@ -263,6 +279,31 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
 
                 return new MultiSectionSearchResponse(searchQueryRequest.querySource().query(), filterNull(newCarsResult, usedCarsResult, carNewsResult, dealersResult));
             }
+        } else if (isUsedCarSearch(tagForest)) {
+
+        } else if (isDealerSearch(tagForest)) {
+
+        } else if (isCitySearch(tagForest)) {
+            // this would be mostly used cars or dealers only
+            List<ForestMember> cityNames = new ArrayList<>();
+            extractCity(tagForest, cityNames::add);
+
+            if (section != null) {
+                SectionResult sectionResult = null;
+                if (StringUtils.equals(section, USED_CAR_SECTION)) {
+                    sectionResult = this.searchUsedCarsByCity(indexName, searchQueryRequest, cityNames);
+                } else if (StringUtils.equals(section, NEW_CAR_DEALER_SECTION)) {
+                    sectionResult = this.searchDealersByCity(indexName, searchQueryRequest, cityNames);
+                }
+
+                if (sectionResult != null) {
+                    return new SingleSectionSearchResponse(searchQueryRequest.querySource().query(), sectionResult);
+                }
+            } else {
+                SectionResult usedCarsResult = searchUsedCarsByCity(indexName, searchQueryRequest, cityNames);
+                SectionResult dealersResult = searchDealersByCity(indexName, searchQueryRequest, cityNames);
+                return new MultiSectionSearchResponse(searchQueryRequest.querySource().query(), filterNull(usedCarsResult, dealersResult));
+            }
         }
 
         // over car name, optional filters such as car type, fuel type, seating capacity, automatic transmission can be applied
@@ -270,44 +311,55 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
         return null;
     }
 
-//    private boolean usedCarSearch(TagForest tagForest) {
-//        return false;
-//    }
-//
-//    private boolean dealerSearch(TagForest tagForest) {
-//        return false;
-//    }
-//
-//    private boolean citySearch(TagForest tagForest) {
-//        return false;
-//    }
-//
-//    private boolean dealerNameSearch(TagForest tagForest) {
-//        return false;
-//    }
-
-    private boolean isCarNameSearch(TagForest tagForest) {
-        // if there is a forest member with intent tag of brand / model / variant type OR NGRAM tag with ref to Intent of brand / model / variant
+    private boolean isKeyword(TagForest tagForest, boolean excludeNgram, String... keywordNames) {
         for (ForestMember forestMember : tagForest.getMembers()) {
             for (BaseTag tag : forestMember.getTags()) {
-                if (tag instanceof IntentTag) {
-                    IntentTag intentTag = (IntentTag) tag;
-
-                    if (CAR_NAME_INTENT_FIELDS.contains(intentTag.getName())) {
-                        return true;
-                    }
-                } else if (tag instanceof NGramTag) {
-                    NGramTag nGramTag = (NGramTag) tag;
-
-                    if (nGramTag.getRefTagType() == TagType.Intent && CAR_NAME_INTENT_FIELDS.contains(nGramTag.getName())) {
-                        return true;
-                    }
+                if ((tag.getTagType() == TagType.Keyword || !excludeNgram && tag instanceof NGramTag && ((NGramTag) tag).getRefTagType() == TagType.Keyword)
+                        && Arrays.asList(keywordNames).contains(tag.getName())) {
+                    return true;
                 }
+
             }
         }
 
         return false;
     }
+
+    private boolean isUsedCarSearch(TagForest tagForest) {
+        return false;
+    }
+
+
+    private boolean isDealerSearch(TagForest tagForest) {
+        return false;
+    }
+
+    private boolean isIntent(TagForest tagForest, boolean excludeNgram, String... intentFields) {
+        for (ForestMember forestMember : tagForest.getMembers()) {
+            for (BaseTag tag : forestMember.getTags()) {
+                if ((tag.getTagType() == TagType.Intent || !excludeNgram && tag instanceof NGramTag && ((NGramTag) tag).getRefTagType() == TagType.Intent)
+                        && Arrays.asList(intentFields).contains(tag.getName())) {
+                    return true;
+                }
+
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isCitySearch(TagForest tagForest) {
+        return isIntent(tagForest, false, CITY_INTENT);
+    }
+
+    private boolean isCarNameSearch(TagForest tagForest) {
+        // if there is a forest member with intent tag of brand / model / variant type OR NGRAM tag with ref to Intent of brand / model / variant
+        return isIntent(tagForest, false, BRAND_INTENT, MODEL_INTENT, VARIANT_INTENT);
+    }
+
+    //    private boolean dealerNameSearch(TagForest tagForest) {
+//        return false;
+//    }
 
     private String extractPageType(TagForest tagForest) {
         for (ForestMember forestMember : tagForest.getMembers()) {
@@ -380,6 +432,34 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
         return CarNameType.fromLevel(maxLevel);
     }
 
+    private void extractCity(TagForest tagForest, Consumer<ForestMember> consumer) {
+        for (ForestMember forestMember : tagForest.getMembers()) {
+
+            boolean hasCity = false;
+            for (BaseTag tag : forestMember.getTags()) {
+                if (tag instanceof IntentTag) {
+                    IntentTag intentTag = (IntentTag) tag;
+
+                    if (StringUtils.equals(intentTag.getName(), CITY_INTENT)) {
+                        hasCity = true;
+                    }
+                } else if (tag instanceof NGramTag) {
+                    NGramTag nGramTag = (NGramTag) tag;
+
+                    if (nGramTag.getRefTagType() == TagType.Intent) {
+                        if (StringUtils.equals(nGramTag.getName(), CITY_INTENT)) {
+                            hasCity = true;
+                        }
+                    }
+                }
+            }
+
+            if (hasCity) {
+                consumer.accept(forestMember);
+            }
+        }
+    }
+
 //    private void extractVehicleType(TagForest tagForest) {
 //
 //    }
@@ -393,10 +473,6 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
 //    }
 //
 //    private void extractTransmission(TagForest tagForest) {
-//
-//    }
-//
-//    private void extractCity(TagForest tagForest) {
 //
 //    }
 //
@@ -464,12 +540,12 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
     }
 
     private QueryBuilder newCarNameQueryForPageType(String type, ForestMember forestMember, String pageType) {
-        QueryBuilder queryBuilder = fieldQuery("name", forestMember);
+        QueryBuilder queryBuilder = fieldQuery(PAGE_NAME_FIELD, forestMember);
         if (queryBuilder == null) {
             return null;
         }
 
-        return QueryBuilders.boolQuery().must(queryBuilder).filter(QueryBuilders.termQuery("pageType", pageType)).filter(QueryBuilders.typeQuery(type));
+        return QueryBuilders.boolQuery().must(queryBuilder).filter(QueryBuilders.termQuery(PAGE_TYPE_FIELD, pageType)).filter(QueryBuilders.typeQuery(type));
     }
 
     private QueryBuilder newCarNameQueryByTypes(String[] types, ForestMember carName, String pageType) {
@@ -504,15 +580,19 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
             return null;
         }
 
-        return carNamesQuery(carNames, (carName) -> newCarNameQueryByTypes(types, carName, pageType));
+        return fieldQuery(carNames, (carName) -> newCarNameQueryByTypes(types, carName, pageType));
     }
 
     // TODO: relax queries in some ways... say relaxing by model, and then brand... not so important
-    private QueryBuilder usedCarsQuery(CarNameType carNameType, List<ForestMember> carNames) {
-        return carNamesQuery(carNames, (carName) -> fieldQuery(VARIANT_FIELD, carName));
+    private QueryBuilder usedCarsQueryByCarNames(CarNameType carNameType, List<ForestMember> carNames) {
+        return fieldQuery(carNames, (carName) -> fieldQuery(VARIANT_FIELD, carName));
     }
 
-    private QueryBuilder carNamesQuery(List<ForestMember> carNames, Function<ForestMember, QueryBuilder> supplier) {
+    private QueryBuilder usedCarsQueryByCity(List<ForestMember> cityNames) {
+        return fieldQuery(cityNames, (carName) -> fieldQuery(LISTING_CITY_FIELD, carName));
+    }
+
+    private QueryBuilder fieldQuery(List<ForestMember> carNames, Function<ForestMember, QueryBuilder> supplier) {
         if (carNames.size() == 1) {
             return supplier.apply(carNames.get(0));
         } else {
@@ -525,7 +605,7 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
         }
     }
 
-    private QueryBuilder carNamesQuery(String field, Supplier<Set<String>> supplier) {
+    private QueryBuilder fieldQuery(String field, Supplier<Set<String>> supplier) {
         Set<String> names = supplier.get();
 
         if (!names.isEmpty()) {
@@ -553,9 +633,9 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
             // search for variant
             // search for model
             // search for brand
-            QueryBuilder variantQuery = carNamesQuery(carNames, (carName) -> fieldQuery(VARIANT_FIELD, carName));
-            QueryBuilder modelQuery = carNamesQuery(MODEL_FIELD, () -> extractModels(carNames));
-            QueryBuilder brandQuery = carNamesQuery(BRAND_FIELD, () -> extractBrands(carNames));
+            QueryBuilder variantQuery = fieldQuery(carNames, (carName) -> fieldQuery(VARIANT_FIELD, carName));
+            QueryBuilder modelQuery = fieldQuery(MODEL_FIELD, () -> extractModels(carNames));
+            QueryBuilder brandQuery = fieldQuery(BRAND_FIELD, () -> extractBrands(carNames));
 
             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery().minimumNumberShouldMatch(1);
             if (variantQuery != null) {
@@ -574,8 +654,8 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
         } else if (carNameType == CarNameType.Model) {
             // search for model
             // search for brand
-            QueryBuilder modelQuery = carNamesQuery(carNames, (carName) -> fieldQuery(MODEL_FIELD, carName));
-            QueryBuilder brandQuery = carNamesQuery(BRAND_FIELD, () -> extractBrands(carNames));
+            QueryBuilder modelQuery = fieldQuery(carNames, (carName) -> fieldQuery(MODEL_FIELD, carName));
+            QueryBuilder brandQuery = fieldQuery(BRAND_FIELD, () -> extractBrands(carNames));
 
             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery().minimumNumberShouldMatch(1);
             if (modelQuery != null) {
@@ -589,16 +669,20 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
             return simplify(boolQueryBuilder);
         } else {
             // search for brand
-            return carNamesQuery(carNames, (carName) -> fieldQuery(BRAND_FIELD, carName));
+            return fieldQuery(carNames, (carName) -> fieldQuery(BRAND_FIELD, carName));
         }
     }
 
-    private QueryBuilder carDealersQuery(CarNameType carNameType, List<ForestMember> carNames) {
+    private QueryBuilder carDealersQueryByCarNames(CarNameType carNameType, List<ForestMember> carNames) {
         if (carNameType == CarNameType.Brand) {
-            return carNamesQuery(carNames, (carName) -> fieldQuery(BRAND_FIELD, carName));
+            return fieldQuery(carNames, (name) -> fieldQuery(BRAND_FIELD, name));
         } else {
-            return carNamesQuery(BRAND_FIELD, () -> extractBrands(carNames));
+            return fieldQuery(BRAND_FIELD, () -> extractBrands(carNames));
         }
+    }
+
+    private QueryBuilder carDealersQueryByCity(List<ForestMember> cityNames) {
+        return fieldQuery(cityNames, (name) -> fieldQuery(CITY_FIELD, name));
     }
 
     @NotNull
@@ -612,28 +696,28 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
                     IntentTag intentTag = (IntentTag) tag;
 
                     if (StringUtils.equals(intentTag.getName(), MODEL_INTENT)) {
-                        if (intentTag.getAncestors() != null && intentTag.getAncestors().size() == 1) {
-                            brands.addAll(intentTag.getAncestors().get(0));
+                        if (intentTag.getAncestors() != null && intentTag.getAncestors().containsKey(BRAND_INTENT)) {
+                            brands.addAll(intentTag.getAncestors().get(BRAND_INTENT));
                         }
                     } else if (StringUtils.equals(intentTag.getName(), VARIANT_INTENT)) {
-                        if (intentTag.getAncestors() != null && intentTag.getAncestors().size() == 2) {
-                            brands.addAll(intentTag.getAncestors().get(1));
+                        if (intentTag.getAncestors() != null && intentTag.getAncestors().containsKey(BRAND_INTENT)) {
+                            brands.addAll(intentTag.getAncestors().get(BRAND_INTENT));
                         }
                     }
                 } else if (tag instanceof NGramTag) {
                     NGramTag nGramTag = (NGramTag) tag;
 
                     if (nGramTag.getRefTagType() == TagType.Intent && StringUtils.equals(nGramTag.getName(), BRAND_INTENT)) {
-                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().size() == 1) {
-                            brands.addAll(nGramTag.getAncestors().get(0));
+                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().containsKey(BRAND_INTENT)) {
+                            brands.addAll(nGramTag.getAncestors().get(BRAND_INTENT));
                         }
                     } else if (nGramTag.getRefTagType() == TagType.Intent && StringUtils.equals(nGramTag.getName(), MODEL_INTENT)) {
-                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().size() == 2) {
-                            brands.addAll(nGramTag.getAncestors().get(1));
+                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().containsKey(BRAND_INTENT)) {
+                            brands.addAll(nGramTag.getAncestors().get(BRAND_INTENT));
                         }
                     } else if (nGramTag.getRefTagType() == TagType.Intent && StringUtils.equals(nGramTag.getName(), VARIANT_INTENT)) {
-                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().size() == 3) {
-                            brands.addAll(nGramTag.getAncestors().get(2));
+                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().containsKey(BRAND_INTENT)) {
+                            brands.addAll(nGramTag.getAncestors().get(BRAND_INTENT));
                         }
                     }
                 }
@@ -654,20 +738,20 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
                     IntentTag intentTag = (IntentTag) tag;
 
                     if (StringUtils.equals(intentTag.getName(), VARIANT_INTENT)) {
-                        if (intentTag.getAncestors() != null && intentTag.getAncestors().size() == 2) {
-                            models.addAll(intentTag.getAncestors().get(0));
+                        if (intentTag.getAncestors() != null && intentTag.getAncestors().containsKey(MODEL_INTENT)) {
+                            models.addAll(intentTag.getAncestors().get(MODEL_INTENT));
                         }
                     }
                 } else if (tag instanceof NGramTag) {
                     NGramTag nGramTag = (NGramTag) tag;
 
                     if (nGramTag.getRefTagType() == TagType.Intent && StringUtils.equals(nGramTag.getName(), MODEL_INTENT)) {
-                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().size() == 2) {
-                            models.addAll(nGramTag.getAncestors().get(0));
+                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().containsKey(MODEL_INTENT)) {
+                            models.addAll(nGramTag.getAncestors().get(MODEL_INTENT));
                         }
                     } else if (nGramTag.getRefTagType() == TagType.Intent && StringUtils.equals(nGramTag.getName(), VARIANT_INTENT)) {
-                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().size() == 3) {
-                            models.addAll(nGramTag.getAncestors().get(1));
+                        if (nGramTag.getAncestors() != null && nGramTag.getAncestors().containsKey(MODEL_INTENT)) {
+                            models.addAll(nGramTag.getAncestors().get(MODEL_INTENT));
                         }
                     }
                 }
@@ -710,7 +794,7 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
     private SectionResult searchUsedCarsByCarName(String indexName, SearchQueryRequest searchQueryRequest, CarNameType carNameType, List<ForestMember> carNames) {
         return searchType(indexName,
                 searchQueryRequest,
-                () -> this.usedCarsQuery(carNameType, carNames),
+                () -> this.usedCarsQueryByCarNames(carNameType, carNames),
                 USED_CAR_SECTION,
                 () -> USED_CAR_TYPES);
     }
@@ -726,7 +810,23 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
     private SectionResult searchDealersByCarName(String indexName, SearchQueryRequest searchQueryRequest, CarNameType carNameType, List<ForestMember> carNames) {
         return searchType(indexName,
                 searchQueryRequest,
-                () -> this.carDealersQuery(carNameType, carNames),
+                () -> this.carDealersQueryByCarNames(carNameType, carNames),
+                NEW_CAR_DEALER_SECTION,
+                () -> NEW_CAR_DEALER_TYPES);
+    }
+
+    private SectionResult searchUsedCarsByCity(String indexName, SearchQueryRequest searchQueryRequest, List<ForestMember> cityNames) {
+        return searchType(indexName,
+                searchQueryRequest,
+                () -> this.usedCarsQueryByCity(cityNames),
+                USED_CAR_SECTION,
+                () -> USED_CAR_TYPES);
+    }
+
+    private SectionResult searchDealersByCity(String indexName, SearchQueryRequest searchQueryRequest, List<ForestMember> cityNames) {
+        return searchType(indexName,
+                searchQueryRequest,
+                () -> this.carDealersQueryByCity(cityNames),
                 NEW_CAR_DEALER_SECTION,
                 () -> NEW_CAR_DEALER_TYPES);
     }

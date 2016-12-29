@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.core.tagger;
 
 import io.threesixtyfy.humaneDiscovery.core.conjuncts.TokensBuilder;
+import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.TagUtils;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.ForestMember;
@@ -8,8 +9,8 @@ import io.threesixtyfy.humaneDiscovery.core.tagForest.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.MatchSet;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TokenMatch;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants;
 import io.threesixtyfy.humaneDiscovery.core.utils.EditDistanceUtils;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.Logger;
@@ -31,7 +32,8 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -50,8 +52,6 @@ public class TagBuilder {
     private static final String[] FETCH_SOURCES = new String[]{
             KEY,
             TOKENS,
-//            ENCODINGS,
-//            TOTAL_COUNT,
             TAGS
     };
     private static final String EXPRESSION_LANG = null;
@@ -59,7 +59,7 @@ public class TagBuilder {
     private static final String SORT_SCRIPT = "doc['tokenCount'].value";
     private static final String SCORE_FIELD = "_score";
     private static final int QUERY_TIMEOUT = 400;
-    private static final int RESULT_SIZE = 5;
+    private static final int RESULT_SIZE = 20;
     private final TokenSetQueryBuilder tokenSetQueryBuilder = new TokenSetQueryBuilder();
     private final TokensBuilder tokensBuilder = TokensBuilder.INSTANCE();
 
@@ -70,7 +70,7 @@ public class TagBuilder {
         return INSTANCE;
     }
 
-    public List<TagForest> tag(String instance, AnalysisService analysisService, Client client, Set<? extends TagScope> tagScopes, String query) throws IOException {
+    public List<TagForest> tag(InstanceContext instanceContext, AnalysisService analysisService, Client client, String query) throws IOException {
         long startTime = System.currentTimeMillis();
 
         List<String> tokensList = tokensBuilder.tokens(analysisService, query);
@@ -81,9 +81,7 @@ public class TagBuilder {
             return null;
         }
 
-        String tagIndex = StringUtils.lowerCase(instance) + TokenIndexConstants.TOKEN_STORE_SUFFIX;
-
-        List<TagForest> tagForests = tag(tagIndex, client, tagScopes, tokensList);
+        List<TagForest> tagForests = tag(instanceContext, client, tokensList);
 
         if (tagForests == null) {
             return null;
@@ -98,7 +96,7 @@ public class TagBuilder {
         // filter beyond a threshold
 
         if (logger.isDebugEnabled()) {
-            logger.debug("For query: {} and instance: {} built tags in {}ms = {}", query, instance, (System.currentTimeMillis() - startTime), tagForests);
+            logger.debug("For query: {} and instance: {} built tags in {}ms = {}", query, instanceContext.getName(), (System.currentTimeMillis() - startTime), tagForests);
         }
 
         return tagForests;
@@ -127,24 +125,24 @@ public class TagBuilder {
         }
     }
 
-    private List<TagForest> tag(String tagIndex, Client client, Set<? extends TagScope> tagScopes, List<String> tokens) {
+    private List<TagForest> tag(InstanceContext instanceContext, Client client, List<String> tokens) {
         if (tokens == null || tokens.size() == 0) {
             return null;
         }
 
         List<TagForest> tagForests = new ArrayList<>();
         if (tokens.size() == 1) {
-            SearchHit[] searchHits = matchTokens(tagIndex, client, tagScopes, tokens);
+            SearchHit[] searchHits = matchTokens(instanceContext, client, tokens);
 
             if (searchHits == null) {
                 return null;
             }
 
-            buildTagForests(tokens, searchHits, tagForests);
+            buildTagForests(instanceContext, tokens, searchHits, tagForests);
         } else {
             List<List<String>> conjuncts = conjuncts(tokens);
 
-            List<SearchHit[]> searchHitsList = matchConjuncts(tagIndex, client, tagScopes, conjuncts);
+            List<SearchHit[]> searchHitsList = matchConjuncts(instanceContext, client, conjuncts);
 
             Iterator<List<String>> conjuctsIterator = conjuncts.iterator();
             Iterator<SearchHit[]> searchHitsIterator = searchHitsList.iterator();
@@ -154,7 +152,7 @@ public class TagBuilder {
                 SearchHit[] searchHits = searchHitsIterator.next();
 
                 if (searchHits != null) {
-                    buildTagForests(conjunct, searchHits, tagForests);
+                    buildTagForests(instanceContext, conjunct, searchHits, tagForests);
                 }
             }
         }
@@ -205,15 +203,15 @@ public class TagBuilder {
         }
     }
 
-    private SearchHit[] matchTokens(String tagIndex, Client client, Set<? extends TagScope> tagScopes, List<String> tokens) {
-        QueryBuilder queryBuilder = tokenSetQueryBuilder.buildQuery(tagScopes, tokens);
+    private SearchHit[] matchTokens(InstanceContext instanceContext, Client client, List<String> tokens) {
+        QueryBuilder queryBuilder = tokenSetQueryBuilder.buildQuery(instanceContext.getTagWeights(), tokens);
 
         Script sortScript = new Script(SORT_SCRIPT,
                 ScriptService.ScriptType.INLINE,
                 EXPRESSION_LANG,
                 Collections.singletonMap(INPUT_TOKENS_PARAM, tokens.size()));
 
-        org.elasticsearch.action.search.SearchRequestBuilder searchRequestBuilder = client.prepareSearch(tagIndex)
+        org.elasticsearch.action.search.SearchRequestBuilder searchRequestBuilder = client.prepareSearch(instanceContext.getTagIndex())
                 .setSize(RESULT_SIZE)
                 .setQuery(queryBuilder)
                 .addSort(SCORE_FIELD, SortOrder.DESC)
@@ -229,17 +227,24 @@ public class TagBuilder {
                 .actionGet(QUERY_TIMEOUT, TimeUnit.MILLISECONDS);
 
         if (searchResponse != null && searchResponse.getHits() != null && searchResponse.getHits().getHits() != null && searchResponse.getHits().getHits().length > 0) {
+//            final float maxScore = searchResponse.getHits().getHits()[0].score();
+
+            SearchHit[] searchHits = searchResponse.getHits().getHits();
+//            Arrays.stream(searchResponse.getHits().getHits())
+//                    .filter(searchHit -> searchHit.getScore() >= (0.375 * maxScore))
+//                    .toArray(SearchHit[]::new);
+
             if (logger.isDebugEnabled()) {
-                logger.debug("For tokens {} search hits {}", tokens, searchResponse.getHits().getHits().length);
+                logger.debug("For tokens {} search hits {}", tokens, searchHits.length);
             }
 
-            for (SearchHit searchHit : searchResponse.getHits().getHits()) {
+            for (SearchHit searchHit : searchHits) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("[{}] ==> {}", searchHit.getScore(), searchHit.getSource());
                 }
             }
 
-            return searchResponse.getHits().getHits();
+            return searchHits;
         }
 
         return null;
@@ -247,19 +252,19 @@ public class TagBuilder {
 
     // TODO: would multi-search be more optimised here
     // TODO: use caching here
-    private List<SearchHit[]> matchConjuncts(String tagIndex, Client client, Set<? extends TagScope> tagScopes, List<List<String>> conjuncts) {
+    private List<SearchHit[]> matchConjuncts(InstanceContext instanceContext, Client client, List<List<String>> conjuncts) {
 
         List<SearchHit[]> searchHitsList = new ArrayList<>();
 
         for (List<String> tokens : conjuncts) {
-            searchHitsList.add(matchTokens(tagIndex, client, tagScopes, tokens));
+            searchHitsList.add(matchTokens(instanceContext, client, tokens));
         }
 
         return searchHitsList;
     }
 
     // can we optimise the implementation for single tokens
-    private void buildTagForests(List<String> tokens, SearchHit[] searchHits, List<TagForest> tagForests) {
+    private void buildTagForests(InstanceContext instanceContext, List<String> tokens, SearchHit[] searchHits, List<TagForest> tagForests) {
         // for all results
         // for each existing buildTagForests
         // find which all tokens it covers
@@ -269,19 +274,16 @@ public class TagBuilder {
         }
 
         for (SearchHit searchHit : searchHits) {
-            List<String> resultTokens = SearchHitUtils.fieldValue(searchHit, TOKENS);
-            List<Map<String, Object>> tagData = SearchHitUtils.fieldValue(searchHit, TAGS);
-
-            MatchSet brokenTokenMatchSet = buildTokenMatches(tokens, resultTokens, tagData);
+            MatchSet brokenTokenMatchSet = buildTokenMatches(instanceContext, tokens, searchHit);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Input Tokens: {} and Result Tokens: {} Token Wise Match Set: {}", tokens, resultTokens, brokenTokenMatchSet);
+                logger.debug("Input Tokens: {} and Search Hit: {} Token Wise Match Set: {}", tokens, searchHit, brokenTokenMatchSet);
             }
 
-            MatchSet joinedTokenMatchSet = tokens.size() > 1 || resultTokens.size() > 1 ? buildJoinedTokenMatches(tokens, resultTokens, tagData) : null;
+            MatchSet joinedTokenMatchSet = buildJoinedTokenMatches(instanceContext, tokens, searchHit);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Input Tokens: {} and Result Tokens: {} Joined Match Set: {}", tokens, resultTokens, joinedTokenMatchSet);
+                logger.debug("Input Tokens: {} and Search Hit: {} Joined Match Set: {}", tokens, searchHit, joinedTokenMatchSet);
             }
 
             MatchSet matchSet = bestMatchSet(brokenTokenMatchSet, joinedTokenMatchSet);
@@ -317,14 +319,16 @@ public class TagBuilder {
                     // is match fully contained too...
                     // if not, then we check for scores
                     if (found) {
-                        if (!forestMember.containsMatched(matchSet)
-                                && forestMember.getMatchLevel().getLevel() >= matchSet.getMatchLevel().getLevel()
-                                && forestMember.getScore() < matchSet.getScore()) {
+                        if (/*!forestMember.containsMatched(matchSet)
+                                && */forestMember.compareTo(matchSet) > 0) {
                             // we replace here
                             if (logger.isDebugEnabled()) {
                                 logger.debug("Replacing Forest Member {} with better matchSet {}", forestMember, matchSet);
                             }
                             tagForest.replace(forestMember, matchSet);
+                        } else if (forestMember.inputContainedBy(matchSet) && forestMember.containsMatched(matchSet) && forestMember.matchContainedBy(matchSet)) {
+                            // do we need to merge tags here
+                            forestMember.mergeTags(matchSet);
                         } else {
                             if (logger.isDebugEnabled()) {
                                 logger.debug("TagForest {} already contains better matchSet {} --> not adding", forestMember, matchSet);
@@ -374,7 +378,6 @@ public class TagBuilder {
                 // are there any buildTagForests forest that has same input as matched token
                 // yes, we selectively clone them and replace those
                 // no, we clone existing and add this to them
-
                 if (tagForests.size() == 0) {
                     // simply add current matched token to a new buildTagForests forest
                     if (logger.isDebugEnabled()) {
@@ -431,47 +434,86 @@ public class TagBuilder {
         for (String token : inputTokens) {
             // does resultToken match some exact 'token' in input
             if (StringUtils.startsWith(resultToken, token)) {
-                return new TokenMatch(token, resultToken, MatchLevel.EdgeGram, EDGE_GRAM_MATCH_SCORE);
+                float scoreNormaliser = resultToken.length() - token.length() + 1;
+                return new TokenMatch(token, resultToken, MatchLevel.EdgeGram, EDGE_GRAM_MATCH_SCORE / scoreNormaliser);
             }
         }
 
         return null;
     }
 
-    private TokenMatch phoneticMatch(List<String> inputTokens, String resultToken) {
+    private TokenMatch phoneticMatch(List<String> inputTokens, String resultToken, boolean noEdgeGramMatch, float phoneticThreshold) {
         String bestInputToken = null;
         float bestScore = 0.0f;
 
         int resultTokenLength = resultToken.length();
 
+        boolean edgeGram = false;
         for (String inputToken : inputTokens) {
             // is there a match
             int inputTokenLength = inputToken.length();
-            int totalLength = (resultTokenLength + inputTokenLength) / 2;
 
-            float dmDistance = Math.round(200.0f * EditDistanceUtils.getDamerauLevenshteinDistance(resultToken, inputToken) / (resultTokenLength + inputTokenLength));
+            if (!noEdgeGramMatch && inputTokenLength < resultTokenLength && inputTokenLength >= 3) {
+                for (int i = Math.max(3, Math.min(3, inputTokenLength - 1)); i <= resultTokenLength; i++) {
+                    String newResultToken = resultToken.substring(0, i);
+                    int newResultTokenLength = newResultToken.length();
 
-//            logger.info("Fuzzy match of {} and {} --> dm dist={}", resultToken, inputToken, dmDistance);
+//                    int totalLength = (newResultTokenLength + inputTokenLength) / 2;
 
-            // find better of the lot
-            if (totalLength <= 4 && dmDistance < 40 || totalLength > 4 && dmDistance < 50) {
-//                logger.info("Fuzzy matched {} and {}", resultToken, inputToken);
-                float score = 1.0f - (dmDistance / 100.0f);
-                if (score <= 0.0f || bestScore < score) {
-                    bestScore = score;
-                    bestInputToken = inputToken;
+                    float dmDistance = Math.round(200.0f * EditDistanceUtils.getDamerauLevenshteinDistance(newResultToken, inputToken) / (newResultTokenLength + inputTokenLength));
+
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Fuzzy match of {}/{} and {} --> dm dist={}", newResultToken, resultToken, inputToken, dmDistance);
+                    }
+
+                    // find better of the lot
+                    if (newResultTokenLength < resultTokenLength && dmDistance <= (0.80 * phoneticThreshold) || newResultTokenLength == resultTokenLength && dmDistance <= phoneticThreshold) {
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("Fuzzy matched {} and {}", resultToken, inputToken);
+                        }
+
+                        float scoreNormaliser = (resultTokenLength - newResultTokenLength) + 1;
+
+                        float score = (1.0f - (dmDistance / 100.0f)) / scoreNormaliser;
+                        if (score <= 0.0f || bestScore < score) {
+                            bestScore = score;
+                            bestInputToken = inputToken;
+                            edgeGram = newResultTokenLength < resultTokenLength;
+                        }
+                    }
+                }
+            } else {
+//                int totalLength = (resultTokenLength + inputTokenLength) / 2;
+
+                float dmDistance = Math.round(200.0f * EditDistanceUtils.getDamerauLevenshteinDistance(resultToken, inputToken) / (resultTokenLength + inputTokenLength));
+
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Fuzzy match of {} and {} --> dm dist={}", resultToken, inputToken, dmDistance);
+                }
+
+                // find better of the lot
+                if (/*totalLength <= 4 && dmDistance < 40 || totalLength > 4 && */dmDistance <= phoneticThreshold) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Fuzzy matched {} and {}", resultToken, inputToken);
+                    }
+
+                    float score = 1.0f - (dmDistance / 100.0f);
+                    if (score <= 0.0f || bestScore < score) {
+                        bestScore = score;
+                        bestInputToken = inputToken;
+                    }
                 }
             }
         }
 
         if (bestInputToken != null) {
-            return new TokenMatch(bestInputToken, resultToken, MatchLevel.Phonetic, bestScore);
+            return new TokenMatch(bestInputToken, resultToken, edgeGram ? MatchLevel.EdgeGramPhonetic : MatchLevel.Phonetic, bestScore);
         }
 
         return null;
     }
 
-    private TokenMatch matchedToken(List<String> tokens, String resultToken) {
+    private TokenMatch matchedToken(List<String> tokens, String resultToken, boolean noEdgeGramMatch, float phoneticThreshold) {
         TokenMatch tokenMatch = exactMatch(tokens, resultToken);
 
         if (tokenMatch == null) {
@@ -479,7 +521,15 @@ public class TagBuilder {
         }
 
         if (tokenMatch == null) {
-            tokenMatch = phoneticMatch(tokens, resultToken);
+            tokenMatch = phoneticMatch(tokens, resultToken, noEdgeGramMatch, phoneticThreshold);
+        }
+
+        if (tokenMatch == null) {
+            tokenMatch = phoneticMatch(tokens, resultToken, noEdgeGramMatch, phoneticThreshold * 1.20f);
+        }
+
+        if (tokenMatch == null) {
+            tokenMatch = phoneticMatch(tokens, resultToken, noEdgeGramMatch, phoneticThreshold * 1.40f);
         }
 
         if (logger.isDebugEnabled()) {
@@ -489,19 +539,42 @@ public class TagBuilder {
         return tokenMatch;
     }
 
-    private MatchSet buildTokenMatches(List<String> tokens, List<String> resultTokens, List<Map<String, Object>> tagData) {
+    private MatchSet buildTokenMatches(InstanceContext instanceContext, List<String> tokens, SearchHit searchHit) {
+        List<String> resultTokens = SearchHitUtils.fieldValue(searchHit, TOKENS);
+        List<Map<String, Object>> tagData = SearchHitUtils.fieldValue(searchHit, TAGS);
+
         // linked map of input token to matched token, it's score, matched stats
         List<TokenMatch> matches = null;
 
         for (String resultToken : resultTokens) {
-            TokenMatch tokenMatch = matchedToken(tokens, resultToken);
+            TokenMatch tokenMatch = matchedToken(tokens, resultToken, false, 50);
 
             if (tokenMatch != null) {
                 if (matches == null) {
                     matches = new ArrayList<>();
                 }
 
-                matches.add(tokenMatch);
+                int sameIndex = 0;
+                TokenMatch same = null;
+                for (TokenMatch match : matches) {
+                    if (StringUtils.equals(match.getInputToken(), tokenMatch.getInputToken()) || StringUtils.equals(match.getMatchedToken(), tokenMatch.getMatchedToken())) {
+                        same = match;
+                        break;
+                    }
+
+                    sameIndex++;
+                }
+
+                if (same != null) {
+                    TokenMatch best = ObjectUtils.min(same, tokenMatch);
+                    if (best != same) {
+                        // we replace same with tokenMatch
+                        matches.remove(sameIndex);
+                        matches.add(tokenMatch);
+                    }
+                } else {
+                    matches.add(tokenMatch);
+                }
             }
         }
 
@@ -509,39 +582,49 @@ public class TagBuilder {
             return null;
         }
 
-        // TODO: do it at single place
-        List<BaseTag> tags = new ArrayList<>();
+        SortedSet<BaseTag> tags = new TreeSet<>();
         Consumer<BaseTag> consumer = tags::add;
 
-        TagUtils.unmap(tagData, consumer);
+        TagUtils.unmap(tagData, consumer, instanceContext.getTagWeightsMap(), matches.size() < resultTokens.size());
 
-        int size = matches.size();
         int totalResultTokens = resultTokens.size();
-        float score = 1.0f;
-        int matchLevel = 0;
+        float score = 1.0f; //(float) Math.log(searchHit.getScore());
+        int matchCode = 0;
 
         List<String> inputTokens = new ArrayList<>();
         List<String> matchedTokens = new ArrayList<>();
         for (TokenMatch match : matches) {
             score *= match.getScore();
-            matchLevel = Math.max(matchLevel, match.getMatchLevel().getLevel());
+            matchCode = Math.max(matchCode, match.getMatchLevel().getCode());
             inputTokens.add(match.getInputToken());
             matchedTokens.add(match.getMatchedToken());
         }
 
-        score = score * size / totalResultTokens;
+//        score = score * size / totalResultTokens;
 
-        return new MatchSet(inputTokens, matchedTokens, MatchLevel.byLevel(matchLevel), score, tags, totalResultTokens);
+        float weight = 0f;
+        if (tags.size() > 0 && tags.first().getWeight() != 0) {
+            weight = tags.first().getWeight();
+        }
+
+        return new MatchSet(inputTokens, matchedTokens, MatchLevel.byCode(matchCode), score, weight, tags, totalResultTokens);
     }
 
-    private MatchSet buildJoinedTokenMatches(List<String> inputTokens, List<String> resultTokens, List<Map<String, Object>> tagData) {
+    private MatchSet buildJoinedTokenMatches(InstanceContext instanceContext, List<String> inputTokens, SearchHit searchHit) {
+        List<String> resultTokens = SearchHitUtils.fieldValue(searchHit, TOKENS);
+        List<Map<String, Object>> tagData = SearchHitUtils.fieldValue(searchHit, TAGS);
+
+        if (inputTokens.size() <= 1 && resultTokens.size() <= 1) {
+            return null;
+        }
+
         // linked map of input token to matched token, it's score, matched stats
         List<TokenMatch> tokenMatches = null;
 
         String joinedInputToken = inputTokens.stream().collect(Collectors.joining());
         String joinedResultToken = resultTokens.stream().collect(Collectors.joining());
 
-        TokenMatch tokenMatch = matchedToken(Collections.singletonList(joinedInputToken), joinedResultToken);
+        TokenMatch tokenMatch = matchedToken(Collections.singletonList(joinedInputToken), joinedResultToken, true, 40);
 
         if (tokenMatch != null) {
             tokenMatches = new ArrayList<>();
@@ -552,13 +635,19 @@ public class TagBuilder {
             return null;
         }
 
-        // TODO: do it at single place
-        List<BaseTag> tags = new ArrayList<>();
+        SortedSet<BaseTag> tags = new TreeSet<>();
         Consumer<BaseTag> consumer = tags::add;
 
-        TagUtils.unmap(tagData, consumer);
+        TagUtils.unmap(tagData, consumer, instanceContext.getTagWeightsMap(), false);
 
-        return new MatchSet(inputTokens, resultTokens, tokenMatch.getMatchLevel(), tokenMatch.getScore(), tags, resultTokens.size());
+        float score = tokenMatch.getScore() /* * (float) Math.log(searchHit.getScore())*/;
+
+        float weight = 0f;
+        if (tags.size() > 0 && tags.first().getWeight() != 0) {
+            weight = tags.first().getWeight();
+        }
+
+        return new MatchSet(inputTokens, resultTokens, tokenMatch.getMatchLevel(), score, weight, tags, resultTokens.size());
     }
 
     private MatchSet bestMatchSet(MatchSet one, MatchSet two) {
@@ -576,13 +665,36 @@ public class TagBuilder {
     private boolean matchSetBetterThanForestMembers(MatchSet matchSet, List<ForestMember> forestMembers) {
         int maxLevel = 0;
 
+        float weight = 1.0f;
         float score = 1.0f;
         for (ForestMember forestMember : forestMembers) {
             maxLevel = Math.max(maxLevel, forestMember.getMatchLevel().getLevel());
             score *= forestMember.getScore();
+            weight *= forestMember.getWeight();
         }
 
-        return matchSet.getMatchLevel().getLevel() <= maxLevel && matchSet.getScore() > score;
+        float diffPercent = Math.abs(score - matchSet.getScore()) * 100.0f / Math.max(score, matchSet.getScore());
+
+//        logger.info("Forest Diff: {}, weight: {}, score: {}, maxLevel: {}", diffPercent, weight, score, maxLevel);
+//        logger.info("MatchSet weight: {}, score: {}, maxLevel: {}", matchSet.getWeight(), matchSet.getScore(), matchSet.getMatchLevel());
+
+        int ret = 0;
+        if (diffPercent < 20f) {
+            // we compare on weight
+            ret = Float.compare(matchSet.getWeight(), weight);
+        }
+
+        if (ret == 0) {
+            ret = Float.compare(matchSet.getScore(), score);
+        }
+
+        if (ret == 0) {
+            ret = Integer.compare(maxLevel, matchSet.getMatchLevel().getLevel());
+        }
+
+//        logger.info("Ret: {}", ret);
+
+        return ret >= 0;
 
     }
 }

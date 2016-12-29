@@ -4,11 +4,12 @@ import io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants;
 
 import java.util.Map;
 
-public abstract class BaseTag<T extends BaseTag<T>> {
+public abstract class BaseTag<T extends BaseTag<T>> implements Comparable<T> {
 
     private String key;
     private TagType tagType;
     private String name;
+    private transient float weight;
 
     public BaseTag(TagType tagType) {
         this.tagType = tagType;
@@ -26,6 +27,14 @@ public abstract class BaseTag<T extends BaseTag<T>> {
 
     public String getName() {
         return name;
+    }
+
+    public float getWeight() {
+        return weight;
+    }
+
+    public void setWeight(float weight) {
+        this.weight = weight;
     }
 
     public String key() {
@@ -89,5 +98,16 @@ public abstract class BaseTag<T extends BaseTag<T>> {
 
     public void clear() {
         // do nothing
+    }
+
+    @Override
+    public int compareTo(T o) {
+        int ret = Integer.compare(this.getTagType().getLevel(), o.getTagType().getLevel());
+
+        if (ret == 0) {
+            ret = Float.compare(o.getWeight(), this.getWeight());
+        }
+
+        return ret;
     }
 }

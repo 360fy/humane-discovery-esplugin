@@ -446,13 +446,13 @@ public abstract class BaseHumaneQueryBuilder<T extends BaseHumaneQueryBuilder<T>
 //
 //            Map<String, QueryTag> suggestionsMap = EmptySuggestionMap;
 //            if (numTokens < 6) {
-//                Set<DefaultTagScope> suggestionScopes;
+//                Set<DefaultTagWeight> suggestionScopes;
 //                final String tokenStoreIndex = instance + TokenIndexConstants.TOKEN_STORE_SUFFIX;
 //
 //                if (intentFields == null || intentFields.size() == 0) {
 //                    suggestionScopes = new HashSet<>();
 //                } else {
-//                    suggestionScopes = intentFields.stream().map(DefaultTagScope::new).collect(Collectors.toSet());
+//                    suggestionScopes = intentFields.stream().map(DefaultTagWeight::new).collect(Collectors.toSet());
 //                }
 //
 //                suggestionsMap = TAG_BUILDER.fetchSuggestions(client,

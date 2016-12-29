@@ -10,17 +10,20 @@ import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.functionscore.ScoreFunctionBuilders;
-import org.elasticsearch.script.Script;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants.Fields.ENCODINGS;
 import static io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants.TOKEN_NESTED_FIELD;
 import static io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants.encodingNestedField;
 import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
+import static org.elasticsearch.index.query.QueryBuilders.constantScoreQuery;
 import static org.elasticsearch.index.query.QueryBuilders.disMaxQuery;
 import static org.elasticsearch.index.query.QueryBuilders.functionScoreQuery;
 import static org.elasticsearch.index.query.QueryBuilders.nestedQuery;
@@ -30,14 +33,14 @@ public class TokenSetQueryBuilder {
 
     private static final Logger logger = Loggers.getLogger(TokenSetQueryBuilder.class);
 
-    private static final float EXACT_TERM_BOOST = 1050.0f;
+    private static final float EXACT_TERM_BOOST = 2050.0f;
     private static final int MINIMUM_NUMBER_SHOULD_MATCH = 2;
 //    private static final String SCORE_SCRIPT = "_score / doc['tokenCount'].value";
 
     private final TokenQueryBuilder tokenQueryBuilder = new TokenQueryBuilder();
     private final EncodingsBuilder encodingsBuilder = new EncodingsBuilder();
 
-    public QueryBuilder buildQuery(Set<? extends TagScope> tagScopes, List<String> tokens) {
+    public QueryBuilder buildQuery(Collection<TagWeight> tagWeights, List<String> tokens) {
         // TODO: add scope
 
         BoolQueryBuilder boolQueryBuilder = boolQuery().minimumNumberShouldMatch(1)/*.disableCoord(true)*/;
@@ -54,15 +57,13 @@ public class TokenSetQueryBuilder {
             boolQueryBuilder.should(nestedQuery(ENCODINGS, tokenQueryBuilder.query(tokenWithEncodings), ScoreMode.Max));
         }
 
-        QueryBuilder queryBuilder = simplifyBoolQuery(boolQueryBuilder);
-
-//        QueryBuilder queryBuilder = functionScoreQuery(nestedQuery,
+        //        QueryBuilder queryBuilder = functionScoreQuery(nestedQuery,
 //                ScoreFunctionBuilders.scriptFunction(new Script(SCORE_SCRIPT,
 //                        ScriptService.ScriptType.INLINE,
 //                        "expression",
 //                        null)));
 
-        return queryBuilder;
+        return simplifyBoolQuery(boolQueryBuilder);
     }
 
     private QueryBuilder simplifyBoolQuery(BoolQueryBuilder boolQueryBuilder) {
@@ -92,7 +93,7 @@ public class TokenSetQueryBuilder {
 
 //    private QueryBuilder buildSuggestionScope(TaskContext taskContext) {
 //        BoolQueryBuilder scopeQueryBuilder = new BoolQueryBuilder();
-//        for (TagScope suggestionScope : taskContext.suggestionScopes) {
+//        for (TagWeight suggestionScope : taskContext.suggestionScopes) {
 //            scopeQueryBuilder.should(QueryBuilders.nestedQuery("fieldStats", QueryBuilders.termQuery("fieldStats.fieldName", suggestionScope.getEntityName()), ScoreMode.None));
 //        }
 //
@@ -106,8 +107,8 @@ public class TokenSetQueryBuilder {
         private final ExactTokenQueryBuilder exactTokenQueryBuilder = new ExactTokenQueryBuilder();
 
         private QueryBuilder query(TokenWithEncodings tokenWithEncodings) {
-//            return functionScoreQuery(innerQuery(tokenWithEncodings), ScoreFunctionBuilders.fieldValueFactorFunction("encodings.weight").missing(1));
-            return functionScoreQuery(innerQuery(tokenWithEncodings), ScoreFunctionBuilders.scriptFunction(new Script("_score * (doc['encodings.tokenType'] == 'EdgeGram' ? 0.5 : 1.0)")));
+            return functionScoreQuery(innerQuery(tokenWithEncodings), ScoreFunctionBuilders.fieldValueFactorFunction("encodings.weight").missing(1));
+//            return functionScoreQuery(innerQuery(tokenWithEncodings), ScoreFunctionBuilders.scriptFunction(new Script("_score * (doc['encodings.tokenType'].value == 'EdgeGram' ? 0.5 : 1.0)")));
         }
 
         private QueryBuilder innerQuery(TokenWithEncodings tokenWithEncodings) {
@@ -126,29 +127,22 @@ public class TokenSetQueryBuilder {
     private static class EncodingQueryBuilder {
         private final PhoneticEncodingQueryBuilder phoneticEncodingQueryBuilder = new PhoneticEncodingQueryBuilder();
         private final NGramEncodingQueryBuilder nGramEncodingQueryBuilder = new NGramEncodingQueryBuilder();
+        private final NGramStartEncodingQueryBuilder nGramStartEncodingQueryBuilder = new NGramStartEncodingQueryBuilder();
+        private final NGramEndEncodingQueryBuilder nGramEndEncodingQueryBuilder = new NGramEndEncodingQueryBuilder();
 
         private BoolQueryBuilder query(TokenWithEncodings tokenWithEncodings) {
-            BoolQueryBuilder encodingsQuery = boolQuery()/*.disableCoord(true)*/;
+            BoolQueryBuilder encodingsQuery = boolQuery()/*.disableCoord(true)*/.minimumNumberShouldMatch(1);
 
-            Set<String> ngramEncodings = tokenWithEncodings.encodings.get(TokenIndexConstants.Encoding.NGRAM_ENCODING);
-            if (ngramEncodings != null && ngramEncodings.size() > 0) {
-                int minShouldMatch = Math.min(Math.max((int) Math.floor(0.375 * ngramEncodings.size()), MINIMUM_NUMBER_SHOULD_MATCH), ngramEncodings.size());
-                QueryBuilder ngramQuery = nGramEncodingQueryBuilder.query(ngramEncodings, TokenIndexConstants.Encoding.NGRAM_ENCODING, minShouldMatch);
-
-                if (ngramQuery != null) {
-                    encodingsQuery.must(ngramQuery);
+            Consumer<QueryBuilder> consumer = (queryBuilder) -> {
+                if (queryBuilder != null) {
+                    encodingsQuery.should(queryBuilder);
                 }
-            }
+            };
 
-            QueryBuilder phoneticQuery = phoneticEncodingQueryBuilder.query(tokenWithEncodings.encodings);
-            if (phoneticQuery != null) {
-                encodingsQuery.must(phoneticQuery);
-            }
-
-            QueryBuilder ngramQuery = nGramEncodingQueryBuilder.boundaryQuery(tokenWithEncodings.encodings);
-            if (ngramQuery != null) {
-                encodingsQuery.must(ngramQuery);
-            }
+            nGramStartEncodingQueryBuilder.query(tokenWithEncodings.encodings, consumer);
+            nGramEncodingQueryBuilder.query(tokenWithEncodings.encodings, consumer);
+            phoneticEncodingQueryBuilder.query(tokenWithEncodings.encodings, consumer);
+            nGramEndEncodingQueryBuilder.query(tokenWithEncodings.encodings, consumer);
 
             if (encodingsQuery.hasClauses()) {
                 return encodingsQuery;
@@ -158,50 +152,29 @@ public class TokenSetQueryBuilder {
         }
     }
 
-    private static class NGramEncodingQueryBuilder {
-        private QueryBuilder query(Set<String> encodings, String field, int minimumShouldMatch) {
-            if (encodings == null) {
+    private static class BaseNGramQueryBuilder {
+        protected QueryBuilder query(Map<String, Set<String>> encodingsMap, String field, Function<Set<String>, Integer> minimumShouldMatch, float boost) {
+            Set<String> encodings = encodingsMap.get(field);
+
+            if (encodings == null || encodings.size() == 0) {
                 return null;
             }
 
-            BoolQueryBuilder queryBuilder = boolQuery()/*.disableCoord(true)*/;
+            BoolQueryBuilder queryBuilder = boolQuery()/*.boost(boost)*//*.disableCoord(true)*/;
 
             final int totalLength = totalLength(encodings);
 
             encodings.forEach(w -> {
-                float boost = Math.round(w.length() * 100.0f / totalLength);
-                queryBuilder.should(/*constantScoreQuery(*/QueryBuilders.termQuery(encodingNestedField(field), w)).boost(boost)/*)*/;
+                float encodingBoost = Math.round(w.length() * boost / totalLength);
+                queryBuilder.should(constantScoreQuery(QueryBuilders.termQuery(encodingNestedField(field), w)).boost(encodingBoost));
             });
 
-            queryBuilder.minimumNumberShouldMatch(minimumShouldMatch);
+            queryBuilder.minimumNumberShouldMatch(minimumShouldMatch.apply(encodings));
 
             return queryBuilder;
         }
 
-        // build ngram query
-        private QueryBuilder boundaryQuery(Map<String, Set<String>> encodings) {
-            BoolQueryBuilder boolQueryBuilder = boolQuery().minimumNumberShouldMatch(1)/*.disableCoord(true)*/;
-
-            Set<String> ngramStartEncodings = encodings.get(TokenIndexConstants.Encoding.NGRAM_START_ENCODING);
-            if (ngramStartEncodings != null) {
-                QueryBuilder query = query(ngramStartEncodings, TokenIndexConstants.Encoding.NGRAM_START_ENCODING, 1);
-                boolQueryBuilder.should(query);
-            }
-
-            Set<String> ngramEndEncodings = encodings.get(TokenIndexConstants.Encoding.NGRAM_END_ENCODING);
-            if (ngramEndEncodings != null) {
-                QueryBuilder query = query(ngramEndEncodings, TokenIndexConstants.Encoding.NGRAM_END_ENCODING, 1);
-                boolQueryBuilder.should(query);
-            }
-
-            if (boolQueryBuilder.hasClauses()) {
-                return boolQueryBuilder;
-            }
-
-            return null;
-        }
-
-        private int totalLength(Set<String> encodings) {
+        protected int totalLength(Set<String> encodings) {
             int totalLength = 0;
 
             for (String e : encodings) {
@@ -210,13 +183,38 @@ public class TokenSetQueryBuilder {
 
             return totalLength;
         }
+
+        protected int minShouldMatch(Set<String> encodings) {
+            return 1;
+        }
     }
+
+    private static class NGramEndEncodingQueryBuilder extends BaseNGramQueryBuilder {
+        private void query(Map<String, Set<String>> encodings, Consumer<QueryBuilder> consumer) {
+            consumer.accept(query(encodings, TokenIndexConstants.Encoding.NGRAM_END_ENCODING, this::minShouldMatch, 200.0f));
+        }
+    }
+
+    private static class NGramStartEncodingQueryBuilder extends BaseNGramQueryBuilder {
+        private void query(Map<String, Set<String>> encodings, Consumer<QueryBuilder> consumer) {
+            consumer.accept(query(encodings, TokenIndexConstants.Encoding.NGRAM_START_ENCODING, this::minShouldMatch, 200.0f));
+        }
+    }
+
+    private static class NGramEncodingQueryBuilder extends BaseNGramQueryBuilder {
+        protected int minShouldMatch(Set<String> encodings) {
+            return Math.min(Math.max((int) Math.floor(0.20 * encodings.size()), MINIMUM_NUMBER_SHOULD_MATCH), encodings.size());
+        }
+
+        private void query(Map<String, Set<String>> encodings, Consumer<QueryBuilder> consumer) {
+            consumer.accept(query(encodings, TokenIndexConstants.Encoding.NGRAM_ENCODING, this::minShouldMatch, 100.0f));
+        }
+    }
+
 
     private static class PhoneticEncodingQueryBuilder {
 
-        private QueryBuilder query(Map<String, Set<String>> encodings) {
-            BoolQueryBuilder phoneticQueryBuilder = boolQuery().minimumNumberShouldMatch(1)/*.disableCoord(true)*/;
-
+        private void query(Map<String, Set<String>> encodings, Consumer<QueryBuilder> consumer) {
             encodings
                     .entrySet()
                     .forEach(e -> {
@@ -224,20 +222,13 @@ public class TokenSetQueryBuilder {
                             return;
                         }
 
-                        BoolQueryBuilder boolQueryBuilder = boolQuery()/*.disableCoord(true)*/;
+                        float boost = Math.round(200.0f / e.getValue().size());
 
-                        float boost = Math.round(100.0f / e.getValue().size());
+                        BoolQueryBuilder boolQueryBuilder = boolQuery()/*.boost(boost)*//*.disableCoord(true)*/;
 
-                        e.getValue().forEach(w -> boolQueryBuilder.should(/*constantScoreQuery(*/QueryBuilders.termQuery(encodingNestedField(e.getKey()), w)).boost(boost))/*)*/;
-
-                        phoneticQueryBuilder.should(boolQueryBuilder);
+                        e.getValue().forEach(w -> boolQueryBuilder.should(constantScoreQuery(QueryBuilders.termQuery(encodingNestedField(e.getKey()), w)).boost(boost)));
+                        consumer.accept(boolQueryBuilder);
                     });
-
-            if (phoneticQueryBuilder.hasClauses()) {
-                return phoneticQueryBuilder;
-            }
-
-            return null;
         }
     }
 

@@ -15,7 +15,7 @@ public class NGramTag extends TagWithCount<NGramTag> {
         super(TagType.NGram);
     }
 
-    public NGramTag(String name, TagType refTagType, int totalCount, List<List<String>> ancestors) {
+    public NGramTag(String name, TagType refTagType, int totalCount, Map<String, List<String>> ancestors) {
         super(TagType.NGram, name, totalCount, ancestors);
         this.refTagType = refTagType;
     }

@@ -32,7 +32,7 @@ public class TokenInfo {
 
     private int totalCount = DEFAULT_COUNT;
 
-    public static TokenInfo intentToken(String indexName, List<String> tokens, String intentName, List<List<String>> ancestors) {
+    public static TokenInfo intentToken(String indexName, List<String> tokens, String intentName, Map<String, List<String>> ancestors) {
         return new TokenInfo(indexName, tokens).add(new IntentTag(intentName, DEFAULT_COUNT, ancestors));
     }
 
@@ -40,7 +40,7 @@ public class TokenInfo {
         return new TokenInfo(indexName, tokens).add(new KeywordTag(keywordName, normalisedValue));
     }
 
-    public static TokenInfo ngramToken(String indexName, List<String> tokens, String name, List<List<String>> ancestors) {
+    public static TokenInfo ngramToken(String indexName, List<String> tokens, String name, Map<String, List<String>> ancestors) {
         return new TokenInfo(indexName, tokens).add(new NGramTag(name, TagType.Intent, DEFAULT_COUNT, ancestors));
     }
 
@@ -169,10 +169,10 @@ public class TokenInfo {
 
         tokenInfo.clear();
 
-        if (this.hasNonNGramTag()) {
-            // remove all ngram tags
-            this.tags.entrySet().removeIf(t -> t.getValue().getTagType() == TagType.NGram);
-        }
+//        if (this.hasNonNGramTag()) {
+//            // remove all ngram tags
+//            this.tags.entrySet().removeIf(t -> t.getValue().getTagType() == TagType.NGram);
+//        }
     }
 
     private boolean hasNonNGramTag() {

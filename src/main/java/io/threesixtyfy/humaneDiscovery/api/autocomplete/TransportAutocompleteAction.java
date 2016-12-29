@@ -2,6 +2,7 @@ package io.threesixtyfy.humaneDiscovery.api.autocomplete;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
+import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.IntentTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.NGramTag;
@@ -124,23 +125,35 @@ public class TransportAutocompleteAction extends TransportQueryAction<Autocomple
         super(settings, AutocompleteAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, AutocompleteQueryRequest::new);
     }
 
-    protected QueryResponse response(AutocompleteQueryRequest autocompleteQueryRequest) throws IOException {
+    protected QueryResponse response(AutocompleteQueryRequest autocompleteQueryRequest) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+        String key = autocompleteQueryRequest.key();
+
+        QueryResponse queryResponse = null; //this.cacheService.get(key);
+
+//        if (queryResponse != null) {
+//            return queryResponse;
+//        }
+
         Index[] indices = indexNameExpressionResolver.concreteIndices(clusterService.state(), indicesOptions, StringUtils.lowerCase(autocompleteQueryRequest.instance()) + "_store");
 
-        // TODO: depending on input type / section, fetch tag scopes
+        InstanceContext instanceContext = this.instanceContexts.get(autocompleteQueryRequest.instance());
+
         // TODO: support type specific searches
-        QueryResponse queryResponse = null;
         if (indices != null && indices.length == 1) {
             Index index = indices[0];
 
-            List<TagForest> tagForests = createIntents(autocompleteQueryRequest);
+            List<TagForest> tagForests = createIntents(autocompleteQueryRequest, instanceContext);
             if (tagForests != null && tagForests.size() > 0) {
                 queryResponse = buildSearch(index.getName(), autocompleteQueryRequest, tagForests.get(0));
 
             }
         }
 
-        return queryResponse == null ? new AutocompleteResponse(autocompleteQueryRequest.querySource().query()) : queryResponse;
+        queryResponse = queryResponse == null ? new AutocompleteResponse(autocompleteQueryRequest.querySource().query()) : queryResponse;
+
+//        this.cacheService.save(key, queryResponse);
+
+        return queryResponse;
     }
 
     // dealer section will come by car name or dealer name only, can be filtered by city

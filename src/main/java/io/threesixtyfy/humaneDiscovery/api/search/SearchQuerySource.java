@@ -2,6 +2,7 @@ package io.threesixtyfy.humaneDiscovery.api.search;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QuerySource;
 import io.threesixtyfy.humaneDiscovery.core.utils.XContentUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.common.ParseFieldMatcher;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -9,6 +10,9 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentParser;
 
 import java.io.IOException;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static io.threesixtyfy.humaneDiscovery.api.search.SearchConstants.COUNT_FIELD;
 import static io.threesixtyfy.humaneDiscovery.api.search.SearchConstants.DEFAULT_COUNT;
@@ -26,6 +30,7 @@ public class SearchQuerySource extends QuerySource<SearchQuerySource> {
     private String type;
     private String section;
     private String format;
+    private String key;
 
     public int count() {
         return count;
@@ -50,7 +55,7 @@ public class SearchQuerySource extends QuerySource<SearchQuerySource> {
     }
 
     public SearchQuerySource type(String type) {
-        this.type = type;
+        this.type = StringUtils.trim(type);
         return this;
     }
 
@@ -59,7 +64,7 @@ public class SearchQuerySource extends QuerySource<SearchQuerySource> {
     }
 
     public SearchQuerySource section(String section) {
-        this.section = section;
+        this.section = StringUtils.trim(section);
         return this;
     }
 
@@ -68,7 +73,7 @@ public class SearchQuerySource extends QuerySource<SearchQuerySource> {
     }
 
     public SearchQuerySource format(String format) {
-        this.format = format;
+        this.format = StringUtils.trim(format);
         return this;
     }
 
@@ -166,6 +171,17 @@ public class SearchQuerySource extends QuerySource<SearchQuerySource> {
         } else {
             throw new ElasticsearchParseException("failed to parseObject. expected value but got [{}]", token);
         }
+    }
+
+    @Override
+    public String key() {
+        if (key == null) {
+            key = Stream.of(this.type(), this.section(), this.query(), this.format(), String.valueOf(this.page()), String.valueOf(this.count()))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.joining(":"));
+        }
+
+        return key;
     }
 
     @Override

@@ -1,4 +1,7 @@
-package io.threesixtyfy.humaneDiscovery;
+package io.threesixtyfy.humaneDiscovery.core.instance;
+
+import io.threesixtyfy.humaneDiscovery.core.tagger.DefaultTagWeight;
+import io.threesixtyfy.humaneDiscovery.core.tagger.TagWeight;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -6,24 +9,26 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public class CarDekhoSearchSetting {
+public class CarDekhoInstanceContext implements InstanceContext {
+
+    public static final String NAME = "carDekho";
 
     private final SearchApiSetting autocompleteSettings = new SearchApiSetting(this);
     private final SearchApiSetting searchSettings = new SearchApiSetting(this);
 
-    private Map<String, IntentField> intentFields = new HashMap<>();
+    private Map<String, TagWeight> tagWeightsMap = new HashMap<>();
 
-    public CarDekhoSearchSetting() {
-        addIntentField("brand", 11.0f)
-                .addIntentField("model", 10.0f)
-                .addIntentField("variant", 9.0f)
-                .addIntentField("fuelType", 8.0f)
-                .addIntentField("sellerType", 7.0f)
-                .addIntentField("ownershipType", 6.0f)
-                .addIntentField("city", 5.0f)
-                .addIntentField("dealer_name", 4.0f)
-                .addIntentField("news_title", 3.0f)
-                .addIntentField("pageType", 2.0f);
+    public CarDekhoInstanceContext() {
+        addTagWeight("brand", 10.5f)
+                .addTagWeight("model", 10.25f)
+                .addTagWeight("variant", 10.0f)
+                .addTagWeight("pageType", 9.0f)
+                .addTagWeight("fuelType", 8.0f)
+                .addTagWeight("sellerType", 7.0f)
+                .addTagWeight("ownershipType", 6.0f)
+                .addTagWeight("dealer_name", 5.0f)
+                .addTagWeight("news_title", 4.0f)
+                .addTagWeight("city", 3.0f);
 
         autocompleteSettings.addType("new_car_variant")
                 .addQueryField("variant", 10.0f)
@@ -80,20 +85,35 @@ public class CarDekhoSearchSetting {
         return searchSettings;
     }
 
-    private CarDekhoSearchSetting addIntentField(String field, float weight) {
-        IntentField intentField = new IntentField(field, weight);
-        intentFields.put(field, intentField);
+    private CarDekhoInstanceContext addTagWeight(String field, float weight) {
+        DefaultTagWeight intentField = new DefaultTagWeight(field, weight);
+        tagWeightsMap.put(field, intentField);
 
         return this;
+    }
+
+    @Override
+    public String getName() {
+        return NAME;
+    }
+
+    @Override
+    public Collection<TagWeight> getTagWeights() {
+        return tagWeightsMap.values();
+    }
+
+    @Override
+    public Map<String, TagWeight> getTagWeightsMap() {
+        return tagWeightsMap;
     }
 
     // TODO: add support for transform here
     public static class SearchApiSetting {
         private final Map<String, TypeSetting> typeSettings = new HashMap<>();
 
-        private final CarDekhoSearchSetting setting;
+        private final CarDekhoInstanceContext setting;
 
-        public SearchApiSetting(CarDekhoSearchSetting setting) {
+        public SearchApiSetting(CarDekhoInstanceContext setting) {
             this.setting = setting;
         }
 
@@ -113,11 +133,11 @@ public class CarDekhoSearchSetting {
     public static class TypeSetting {
         private String type;
         private final Set<QueryField> queryFields = new HashSet<>();
-        private final Set<IntentField> intentFields = new HashSet<>();
+        private final Set<TagWeight> tagWeights = new HashSet<>();
 
-        private final CarDekhoSearchSetting setting;
+        private final CarDekhoInstanceContext setting;
 
-        public TypeSetting(String type, CarDekhoSearchSetting setting) {
+        public TypeSetting(String type, CarDekhoInstanceContext setting) {
             this.type = type;
             this.setting = setting;
         }
@@ -131,7 +151,7 @@ public class CarDekhoSearchSetting {
         }
 
         private TypeSetting addIntentField(String field) {
-            intentFields.add(this.setting.intentFields.get(field));
+            tagWeights.add(this.setting.tagWeightsMap.get(field));
 
             return this;
         }
@@ -144,8 +164,8 @@ public class CarDekhoSearchSetting {
             return queryFields;
         }
 
-        public Collection<IntentField> getIntentFields() {
-            return intentFields;
+        public Collection<TagWeight> getTagWeights() {
+            return tagWeights;
         }
     }
 

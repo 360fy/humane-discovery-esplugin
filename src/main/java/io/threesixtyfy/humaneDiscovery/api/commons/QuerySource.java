@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.api.commons;
 
 import io.threesixtyfy.humaneDiscovery.core.utils.XContentUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.action.ValidateActions;
@@ -19,8 +20,10 @@ public abstract class QuerySource<T extends QuerySource> implements FromXContent
 
     protected String query;
 
+    public abstract String key();
+
     public ActionRequestValidationException validate(ActionRequestValidationException validationException) {
-        if (query == null) {
+        if (StringUtils.isBlank(query)) {
             validationException = ValidateActions.addValidationError("query is missing", validationException);
         }
 
@@ -32,7 +35,7 @@ public abstract class QuerySource<T extends QuerySource> implements FromXContent
     }
 
     public QuerySource query(String query) {
-        this.query = query;
+        this.query = StringUtils.lowerCase(StringUtils.trim(query));
         return this;
     }
 

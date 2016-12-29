@@ -6,10 +6,13 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 
 import java.io.IOException;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class QueryRequest<Q extends QuerySource<Q>, T extends QueryRequest<Q, T>> extends BaseRequest<T> {
 
     protected final Q querySource;
+    protected String key;
 
     public QueryRequest(Q querySource) {
         this.querySource = querySource;
@@ -35,6 +38,14 @@ public abstract class QueryRequest<Q extends QuerySource<Q>, T extends QueryRequ
 
     public Q querySource() {
         return querySource;
+    }
+
+    public String key() {
+        if (key == null) {
+            key = Stream.of(this.instance(), querySource().key()).collect(Collectors.joining(":"));
+        }
+
+        return key;
     }
 
     @Override

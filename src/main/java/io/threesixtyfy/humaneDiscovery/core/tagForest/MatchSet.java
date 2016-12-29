@@ -3,25 +3,22 @@ package io.threesixtyfy.humaneDiscovery.core.tagForest;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.utils.GsonUtils;
 
+import java.util.Collection;
 import java.util.List;
 
-public class MatchSet implements Comparable<MatchSet> {
+public class MatchSet extends ComparableMatch {
 
     private final int size;
     private final List<String> inputTokens;
     private final List<String> matchedTokens;
-    private final List<BaseTag> tags;
+    private final Collection<BaseTag> tags;
     private final int totalResultTokens;
 
-    protected final MatchLevel matchLevel;
-    protected final float score;
-
-    public MatchSet(List<String> inputTokens, List<String> matchedTokens, MatchLevel matchLevel, float score, List<BaseTag> tags, int totalResultTokens) {
+    public MatchSet(List<String> inputTokens, List<String> matchedTokens, MatchLevel matchLevel, float score, float weight, Collection<BaseTag> tags, int totalResultTokens) {
+        super(matchLevel, score, weight);
         this.size = matchedTokens.size();
         this.inputTokens = inputTokens;
         this.matchedTokens = matchedTokens;
-        this.matchLevel = matchLevel;
-        this.score = score;
         this.tags = tags;
         this.totalResultTokens = totalResultTokens;
     }
@@ -34,7 +31,7 @@ public class MatchSet implements Comparable<MatchSet> {
         return matchedTokens;
     }
 
-    public List<BaseTag> getTags() {
+    public Collection<BaseTag> getTags() {
         return tags;
     }
 
@@ -46,14 +43,6 @@ public class MatchSet implements Comparable<MatchSet> {
         return size;
     }
 
-    public MatchLevel getMatchLevel() {
-        return matchLevel;
-    }
-
-    public float getScore() {
-        return score;
-    }
-
     public boolean isGraph() {
         return matchedTokens.size() > 1;
     }
@@ -63,16 +52,12 @@ public class MatchSet implements Comparable<MatchSet> {
         return GsonUtils.toJson(this);
     }
 
-    @Override
-    public int compareTo(MatchSet o) {
-        int ret = Float.compare(o.score, this.score);
+    public int compareTo(ComparableMatch o) {
 
-        if (ret == 0) {
-            ret = Integer.compare(this.matchLevel.getLevel(), o.getMatchLevel().getLevel());
-        }
+        int ret = super.compareTo(o);
 
-        if (ret == 0) {
-            ret = Integer.compare(this.totalResultTokens, o.totalResultTokens);
+        if (ret == 0 && o instanceof MatchSet) {
+            ret = Integer.compare(this.totalResultTokens, ((MatchSet) o).totalResultTokens);
         }
 
         return ret;

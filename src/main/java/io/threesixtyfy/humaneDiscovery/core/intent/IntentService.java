@@ -1,11 +1,10 @@
 package io.threesixtyfy.humaneDiscovery.core.intent;
 
+import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.ForestMember;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import io.threesixtyfy.humaneDiscovery.core.tagger.TagBuilder;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants;
-import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.ClusterState;
@@ -35,15 +34,15 @@ public class IntentService {
     private IntentService() {
     }
 
-    public List<TagForest> createIntents(String instance, String query, ClusterService clusterService, IndicesService indicesService, Client client, IndexNameExpressionResolver indexNameExpressionResolver) throws IOException {
+    public List<TagForest> createIntents(InstanceContext instanceContext, String query, ClusterService clusterService, IndicesService indicesService, Client client, IndexNameExpressionResolver indexNameExpressionResolver) throws IOException {
         ClusterState clusterState = clusterService.state();
 
-        String tagIndex = StringUtils.lowerCase(instance) + TokenIndexConstants.TOKEN_STORE_SUFFIX;
+        String tagIndex = instanceContext.getTagIndex();
 
         Index[] tagIndices = indexNameExpressionResolver.concreteIndices(clusterState, indicesOptions, tagIndex);
 
         if (tagIndices == null || tagIndices.length == 0) {
-            throw new IOException("Tag index is not found for: " + instance);
+            throw new IOException("Tag index is not found for: " + instanceContext.getName());
         }
 
         IndexService indexService = indicesService.indexService(tagIndices[0]);
@@ -53,7 +52,7 @@ public class IntentService {
         }
 
         // TODO: build tag scopes
-        return tagBuilder.tag(instance, indexService.analysisService(), client, null, query);
+        return tagBuilder.tag(instanceContext, indexService.analysisService(), client, query);
 
 //        List<IntentExpression> intentExpressions = new ArrayList<>();
 //
@@ -90,7 +89,7 @@ public class IntentService {
 
         ForestMember forestMember = forestMembers[index];
 
-        List<BaseTag> tags = forestMember.getTags();
+        Collection<BaseTag> tags = forestMember.getTags();
         if (tags == null || tags.size() == 0) {
             tagStack.push(null);
             buildPath(forestMembers, index + 1, tagStack, intentExpressions);

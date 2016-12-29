@@ -2,7 +2,7 @@ package io.threesixtyfy.humaneDiscovery.core.tagForest;
 
 import io.threesixtyfy.humaneDiscovery.core.utils.GsonUtils;
 
-public class TokenMatch {
+public class TokenMatch implements Comparable<TokenMatch> {
 
     private final String inputToken;
     private final String matchedToken;
@@ -56,5 +56,16 @@ public class TokenMatch {
     @Override
     public String toString() {
         return GsonUtils.toJson(this);
+    }
+
+    @Override
+    public int compareTo(TokenMatch o) {
+        int ret = Integer.compare(this.matchLevel.getLevel(), o.getMatchLevel().getLevel());
+
+        if (ret == 0) {
+            ret = Float.compare(o.getScore(), this.getScore());
+        }
+
+        return ret;
     }
 }

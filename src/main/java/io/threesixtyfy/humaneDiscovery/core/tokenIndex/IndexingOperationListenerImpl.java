@@ -16,21 +16,27 @@ import org.elasticsearch.index.shard.IndexingOperationListener;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants.tokenIndexName;
 
 public class IndexingOperationListenerImpl implements IndexingOperationListener {
 
+    private static final Logger logger = Loggers.getLogger(IndexingOperationListenerImpl.class);
+
     private static final String NAME_FIELD = "name";
     private static final String VALUE_HUMANE_FIELD = "value.humane";
+    private static final String COUNT_FIELD = "count";
 
     private static final String STOP_WORD_TYPE = "stopWord";
     private static final String KEYWORD_TYPE = "keyword";
     private static final String INTENT_TYPE = "intent";
 
-    private static final Logger logger = Loggers.getLogger(IndexingOperationListenerImpl.class);
     private static final String ANCESTORS_FIELD = "ancestors";
+    private static final String ANCESTORS_PREFIX = ANCESTORS_FIELD + ".";
+    private static final String KEYWORD_SUFFIX = "." + KEYWORD_TYPE;
 
     private final SharedChannel sharedChannel;
 
@@ -62,6 +68,43 @@ public class IndexingOperationListenerImpl implements IndexingOperationListener 
         return indexableField.stringValue();
     }
 
+    private long getLongValue(ParseContext.Document document, String field) {
+        IndexableField indexableField = document.getField(field);
+        if (indexableField == null) {
+            return 0;
+        }
+
+        return indexableField.numericValue().longValue();
+    }
+
+    private Map<String, List<String>> ancestors(ParseContext.Document document) {
+        Map<String, List<String>> ancestors = null;
+        for (IndexableField field : document.getFields()) {
+            String name = field.name();
+
+            if (StringUtils.startsWith(name, ANCESTORS_PREFIX) && !StringUtils.endsWith(name, KEYWORD_SUFFIX)) {
+                if (ancestors == null) {
+                    ancestors = new HashMap<>();
+                }
+
+                String[] cols = name.split("[.]");
+                if (cols.length == 2) {
+                    String graphField = cols[1];
+                    List<String> values = ancestors.computeIfAbsent(graphField, k -> new ArrayList<>());
+
+                    String value = field.stringValue();
+                    if (!values.contains(value)) {
+                        values.add(value);
+                    }
+                }
+            }
+        }
+
+//        logger.info("Ancestors {}", ancestors);
+
+        return ancestors;
+    }
+
     private List<String> singletonList(String value) {
         List<String> list = new ArrayList<>();
         list.add(value);
@@ -69,27 +112,11 @@ public class IndexingOperationListenerImpl implements IndexingOperationListener 
         return list;
     }
 
-    private List<List<String>> ancestors(ParseContext.Document document) {
-        IndexableField[] fields = document.getFields(ANCESTORS_FIELD);
-        if (fields != null && fields.length > 0) {
-            List<List<String>> ancestors = new ArrayList<>();
-
-            for (IndexableField field : fields) {
-                ancestors.add(singletonList(field.stringValue()));
-            }
-
-            return ancestors;
-        }
-
-        return null;
-    }
-
-    private List<List<String>> copyAncestors(List<List<String>> ancestors, String ancestor) {
-        List<List<String>> newAncestors = null;
+    private Map<String, List<String>> copyAncestors(Map<String, List<String>> ancestors) {
+        Map<String, List<String>> newAncestors = null;
         if (ancestors != null) {
-            newAncestors = new ArrayList<>();
-            newAncestors.add(singletonList(ancestor));
-            newAncestors.addAll(ancestors);
+            newAncestors = new HashMap<>();
+            newAncestors.putAll(ancestors);
         }
 
         return newAncestors;
@@ -113,6 +140,7 @@ public class IndexingOperationListenerImpl implements IndexingOperationListener 
         tokenStream = valueField.tokenStream(this.humaneAnalyzer, tokenStream);
 
         String name = getValue(document, NAME_FIELD);
+//        long count = getLongValue(document, COUNT_FIELD);
 
         try {
             tokenStream.reset();
@@ -131,7 +159,7 @@ public class IndexingOperationListenerImpl implements IndexingOperationListener 
             // if type == intent, then fetch ancestors too
             // for type == intent, store the intent value
             if (StringUtils.equals(type, INTENT_TYPE)) {
-                List<List<String>> ancestors = ancestors(document);
+                Map<String, List<String>> ancestors = ancestors(document);
 
                 sharedChannel.getTokenQueue().offer(TokenInfo.intentToken(this.indexName, tokenList, name, ancestors));
 
@@ -141,15 +169,15 @@ public class IndexingOperationListenerImpl implements IndexingOperationListener 
                 int size = tokenList.size();
 
                 if (size >= 2) {
-                    String ancestor = valueField.stringValue();
+//                    String ancestor = valueField.stringValue();
 
                     for (int i = 0; i < size; i++) {
                         if (!invalidUnigram(tokenList.get(i))) {
-                            sharedChannel.getTokenQueue().offer(TokenInfo.ngramToken(this.indexName, tokenList.subList(i, i + 1), name, copyAncestors(ancestors, ancestor)));
+                            sharedChannel.getTokenQueue().offer(TokenInfo.ngramToken(this.indexName, tokenList.subList(i, i + 1), name, copyAncestors(ancestors)));
                         }
 
                         if (size > 2 && i < size - 1 && !invalidBigram(tokenList.get(i), tokenList.get(i + 1))) {
-                            sharedChannel.getTokenQueue().offer(TokenInfo.ngramToken(this.indexName, tokenList.subList(i, i + 2), name, copyAncestors(ancestors, ancestor)));
+                            sharedChannel.getTokenQueue().offer(TokenInfo.ngramToken(this.indexName, tokenList.subList(i, i + 2), name, copyAncestors(ancestors)));
                         }
                     }
                 }

@@ -9,6 +9,9 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.XContentParser;
 
 import java.io.IOException;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static io.threesixtyfy.humaneDiscovery.api.search.SearchConstants.COUNT_FIELD;
 import static io.threesixtyfy.humaneDiscovery.api.search.SearchConstants.DEFAULT_COUNT;
@@ -26,6 +29,7 @@ public class AutocompleteQuerySource extends QuerySource<AutocompleteQuerySource
     private String type;
     private String section;
     private String format;
+    private String key;
 
     public int count() {
         return count;
@@ -166,6 +170,17 @@ public class AutocompleteQuerySource extends QuerySource<AutocompleteQuerySource
         } else {
             throw new ElasticsearchParseException("failed to parseObject. expected value but got [{}]", token);
         }
+    }
+
+    @Override
+    public String key() {
+        if (key == null) {
+            key = Stream.of(this.type(), this.section(), this.query(), this.format(), String.valueOf(this.page()), String.valueOf(this.count()))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.joining(":"));
+        }
+
+        return key;
     }
 
     @Override
