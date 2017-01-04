@@ -1,5 +1,6 @@
 package io.threesixtyfy.humaneDiscovery.api.commons;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.ShardOperationFailedException;
 import org.elasticsearch.action.search.ShardSearchFailure;
@@ -16,6 +17,8 @@ import java.io.IOException;
 import static org.elasticsearch.action.search.ShardSearchFailure.readShardSearchFailure;
 
 public abstract class BaseResponse extends ActionResponse implements StatusToXContent {
+
+//    private static final Logger logger = Loggers.getLogger(QueryResponse.class);
 
     private static final int TOTAL_SHARDS_DEFAULT = 1;
     private static final int SUCCESSFUL_SHARDS_DEFAULT = 1;
@@ -51,6 +54,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * Has the search operation timed out.
      */
+    @JsonIgnore
     public boolean isTimedOut() {
         return timedOut;
     }
@@ -59,6 +63,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
      * Has the search operation terminated early due to reaching
      * <code>terminateAfter</code>
      */
+    @JsonIgnore
     public Boolean isTerminatedEarly() {
         return terminatedEarly;
     }
@@ -66,6 +71,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * How long the search took.
      */
+    @JsonIgnore
     public TimeValue getTook() {
         return new TimeValue(tookInMillis);
     }
@@ -73,6 +79,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * How long the search took in milliseconds.
      */
+    @JsonIgnore
     public long getTookInMillis() {
         return tookInMillis;
     }
@@ -80,6 +87,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * The total number of shards the search was executed on.
      */
+    @JsonIgnore
     public int getTotalShards() {
         return totalShards;
     }
@@ -87,6 +95,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * The successful number of shards the search was executed on.
      */
+    @JsonIgnore
     public int getSuccessfulShards() {
         return successfulShards;
     }
@@ -94,6 +103,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * The failed number of shards the search was executed on.
      */
+    @JsonIgnore
     public int getFailedShards() {
         // we don't return totalShards - successfulShards, we don't count "no shards available" as a failed shard, just don't
         // count it in the successful counter
@@ -103,6 +113,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
     /**
      * The failures that occurred during the search.
      */
+    @JsonIgnore
     public ShardOperationFailedException[] getShardFailures() {
         return this.shardFailures;
     }
@@ -114,7 +125,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.field(Fields.SERVICE_TIME_TAKEN, Math.round(tookInMillis * 100.0 / 1000) / 100.0);
+        builder.field(Fields.SERVICE_TIME_TAKEN, Math.round(tookInMillis * 1000.0 / 1000) / 1000.0);
         builder.field(Fields.SERVICE_TIME_TAKEN_IN_MS, tookInMillis);
         builder.field(Fields.TIMED_OUT, isTimedOut());
         if (isTerminatedEarly() != null) {
@@ -132,7 +143,7 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
         totalShards = in.readVInt();
         successfulShards = in.readVInt();
         int shardFailureSize = in.readVInt();
-        if (shardFailureSize == 0) {
+        if (shardFailureSize <= 0) {
             shardFailures = ShardSearchFailure.EMPTY_ARRAY;
         } else {
             shardFailures = new ShardSearchFailure[shardFailureSize];
@@ -141,10 +152,8 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
             }
         }
 
-        timedOut = in.readBoolean();
-
+        timedOut = in.readOptionalBoolean();
         terminatedEarly = in.readOptionalBoolean();
-
         tookInMillis = in.readVLong();
     }
 
@@ -160,10 +169,8 @@ public abstract class BaseResponse extends ActionResponse implements StatusToXCo
             shardSearchFailure.writeTo(out);
         }
 
-        out.writeBoolean(timedOut);
-
+        out.writeOptionalBoolean(timedOut);
         out.writeOptionalBoolean(terminatedEarly);
-
         out.writeVLong(tookInMillis);
     }
 

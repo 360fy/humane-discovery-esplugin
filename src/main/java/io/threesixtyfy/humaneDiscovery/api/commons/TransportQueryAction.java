@@ -42,14 +42,15 @@ public abstract class TransportQueryAction<QS extends QuerySource<QS>, QR extend
                                    ClusterService clusterService,
                                    IndicesService indicesService,
                                    Client client,
-                                   Supplier<QR> request) {
+                                   Supplier<QR> request,
+                                   CacheService cacheService) {
         super(settings, actionName, threadPool, transportService, actionFilters, indexNameExpressionResolver, request);
 
         this.clusterService = clusterService;
         this.client = client;
         this.indicesService = indicesService;
 
-        this.cacheService = new CacheService();
+        this.cacheService = cacheService;
 
         this.instanceContexts.put(CarDekhoInstanceContext.NAME, new CarDekhoInstanceContext());
     }
@@ -58,7 +59,7 @@ public abstract class TransportQueryAction<QS extends QuerySource<QS>, QR extend
         return Math.max(1, System.currentTimeMillis() - startTime);
     }
 
-    protected List<TagForest> createIntents(QR queryRequest, InstanceContext instanceContext) throws IOException {
+    protected List<TagForest> createIntents(QR queryRequest, InstanceContext instanceContext) {
         return IntentService.INSTANCE().createIntents(instanceContext,
                 queryRequest.querySource().query(),
                 clusterService,

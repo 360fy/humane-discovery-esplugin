@@ -2,6 +2,8 @@ package io.threesixtyfy.humaneDiscovery.api.autocomplete;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
+import io.threesixtyfy.humaneDiscovery.api.search.SingleSectionSearchResponse;
+import io.threesixtyfy.humaneDiscovery.core.cache.CacheService;
 import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.IntentTag;
@@ -121,39 +123,33 @@ public class TransportAutocompleteAction extends TransportQueryAction<Autocomple
                                        IndexNameExpressionResolver indexNameExpressionResolver,
                                        ClusterService clusterService,
                                        IndicesService indicesService,
-                                       Client client) throws IOException {
-        super(settings, AutocompleteAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, AutocompleteQueryRequest::new);
+                                       Client client,
+                                       CacheService cacheService) throws IOException {
+        super(settings, AutocompleteAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, AutocompleteQueryRequest::new, cacheService);
     }
 
-    protected QueryResponse response(AutocompleteQueryRequest autocompleteQueryRequest) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
-        String key = autocompleteQueryRequest.key();
+    protected QueryResponse response(AutocompleteQueryRequest queryRequest) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+        return this.cacheService.getOrCompute(queryRequest.key(), QueryResponse.class, () -> {
+            QueryResponse queryResponse = null;
+            Index[] indices = indexNameExpressionResolver.concreteIndices(clusterService.state(), indicesOptions, StringUtils.lowerCase(queryRequest.instance()) + "_store");
 
-        QueryResponse queryResponse = null; //this.cacheService.get(key);
+            InstanceContext instanceContext = this.instanceContexts.get(queryRequest.instance());
 
-//        if (queryResponse != null) {
-//            return queryResponse;
-//        }
+            // TODO: support type specific searches
+            if (indices != null && indices.length == 1) {
+                Index index = indices[0];
 
-        Index[] indices = indexNameExpressionResolver.concreteIndices(clusterService.state(), indicesOptions, StringUtils.lowerCase(autocompleteQueryRequest.instance()) + "_store");
+                List<TagForest> tagForests = createIntents(queryRequest, instanceContext);
+                if (tagForests != null && tagForests.size() > 0) {
+                    queryResponse = buildSearch(index.getName(), queryRequest, tagForests.get(0));
 
-        InstanceContext instanceContext = this.instanceContexts.get(autocompleteQueryRequest.instance());
-
-        // TODO: support type specific searches
-        if (indices != null && indices.length == 1) {
-            Index index = indices[0];
-
-            List<TagForest> tagForests = createIntents(autocompleteQueryRequest, instanceContext);
-            if (tagForests != null && tagForests.size() > 0) {
-                queryResponse = buildSearch(index.getName(), autocompleteQueryRequest, tagForests.get(0));
-
+                }
             }
-        }
 
-        queryResponse = queryResponse == null ? new AutocompleteResponse(autocompleteQueryRequest.querySource().query()) : queryResponse;
+            queryResponse = queryResponse == null ? new AutocompleteResponse(queryRequest.querySource().query()) : queryResponse;
 
-//        this.cacheService.save(key, queryResponse);
-
-        return queryResponse;
+            return queryResponse;
+        });
     }
 
     // dealer section will come by car name or dealer name only, can be filtered by city

@@ -25,6 +25,8 @@ import static io.threesixtyfy.humaneDiscovery.api.search.SearchConstants.TYPE_FI
 
 public class SearchQuerySource extends QuerySource<SearchQuerySource> {
 
+    private static final String NAME = "search";
+
     private int count = DEFAULT_COUNT;
     private int page;
     private String type;
@@ -176,7 +178,7 @@ public class SearchQuerySource extends QuerySource<SearchQuerySource> {
     @Override
     public String key() {
         if (key == null) {
-            key = Stream.of(this.type(), this.section(), this.query(), this.format(), String.valueOf(this.page()), String.valueOf(this.count()))
+            key = Stream.of(NAME, this.type(), this.section(), this.query(), this.format(), String.valueOf(this.page()), String.valueOf(this.count()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.joining(":"));
         }

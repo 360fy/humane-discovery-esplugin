@@ -17,8 +17,12 @@ public class SingleSectionSearchResponse extends QueryResponse<SearchResult> {
 
     private static final SearchResult[] EMPTY = new SearchResult[0];
 
+    public SingleSectionSearchResponse() {
+        super();
+    }
+
     public SingleSectionSearchResponse(String searchText) {
-        super(searchText);
+        super(searchText, EMPTY, 0);
     }
 
     public SingleSectionSearchResponse(String searchText, SectionResult sectionResult) {

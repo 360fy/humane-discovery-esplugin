@@ -20,6 +20,6 @@ public class IntentAction extends Action<IntentQueryRequest, IntentResponse, Int
 
     @Override
     public IntentResponse newResponse() {
-        return new IntentResponse("");
+        return new IntentResponse();
     }
 }

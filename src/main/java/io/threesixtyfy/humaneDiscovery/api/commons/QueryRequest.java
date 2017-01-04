@@ -40,6 +40,8 @@ public abstract class QueryRequest<Q extends QuerySource<Q>, T extends QueryRequ
         return querySource;
     }
 
+//    public abstract String key();
+
     public String key() {
         if (key == null) {
             key = Stream.of(this.instance(), querySource().key()).collect(Collectors.joining(":"));

@@ -2,6 +2,7 @@ package io.threesixtyfy.humaneDiscovery.api.search;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
+import io.threesixtyfy.humaneDiscovery.core.cache.CacheService;
 import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.IntentTag;
@@ -152,68 +153,34 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
                                  IndexNameExpressionResolver indexNameExpressionResolver,
                                  ClusterService clusterService,
                                  IndicesService indicesService,
-                                 Client client) throws IOException {
-        super(settings, SearchAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, SearchQueryRequest::new);
+                                 Client client,
+                                 CacheService cacheService) throws IOException {
+        super(settings, SearchAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, SearchQueryRequest::new, cacheService);
 
         this.analyzer = indicesService.getAnalysis().getAnalyzer(HumaneStandardAnalyzerProvider.NAME);
     }
 
-    protected QueryResponse response(SearchQueryRequest searchQueryRequest) throws IOException, IllegalAccessException, InstantiationException, ClassNotFoundException {
-        String key = searchQueryRequest.key();
+    protected QueryResponse response(SearchQueryRequest queryRequest) {
+        return this.cacheService.getOrCompute(queryRequest.key(), QueryResponse.class, () -> {
+            QueryResponse queryResponse = null;
+            Index[] indices = indexNameExpressionResolver.concreteIndices(clusterService.state(), indicesOptions, StringUtils.lowerCase(queryRequest.instance()) + "_store");
 
-        QueryResponse queryResponse = null;//this.cacheService.get(key);
+            InstanceContext instanceContext = this.instanceContexts.get(queryRequest.instance());
 
-//        if (queryResponse != null) {
-//            return queryResponse;
-//        }
+            // TODO: support type specific searches
+            if (instanceContext != null && indices != null && indices.length == 1) {
+                Index index = indices[0];
 
-        Index[] indices = indexNameExpressionResolver.concreteIndices(clusterService.state(), indicesOptions, StringUtils.lowerCase(searchQueryRequest.instance()) + "_store");
-
-        InstanceContext instanceContext = this.instanceContexts.get(searchQueryRequest.instance());
-
-        // TODO: support type specific searches
-        if (instanceContext != null && indices != null && indices.length == 1) {
-            Index index = indices[0];
-
-            List<TagForest> tagForests = createIntents(searchQueryRequest, instanceContext);
-            if (tagForests != null && tagForests.size() > 0) {
-                queryResponse = buildSearch(index.getName(), searchQueryRequest.querySource().section(), searchQueryRequest, tagForests.get(0));
+                List<TagForest> tagForests = createIntents(queryRequest, instanceContext);
+                if (tagForests != null && tagForests.size() > 0) {
+                    queryResponse = buildSearch(index.getName(), queryRequest.querySource().section(), queryRequest, tagForests.get(0));
+                }
             }
 
-//            String section = searchQueryRequest.querySource().section();
-//            String type = searchQueryRequest.querySource().type();
-//            if (section == null && type == null) {
-//                SectionResult[] sectionResults = new SectionResult[]{
-//                        this.searchNewCars(index.getName(), searchQueryRequest),
-//                        this.searchUsedCars(index.getName(), searchQueryRequest),
-//                        this.searchNews(index.getName(), searchQueryRequest),
-//                        this.searchDealers(index.getName(), searchQueryRequest)
-//                };
-//
-//                return new MultiSectionSearchResponse(sectionResults, 0);
-//            } else if (section != null) {
-//                SectionResult sectionResult = null;
-//                if (StringUtils.equals(section, NEW_CAR_TYPE)) {
-//                    sectionResult = this.searchNewCars(index.getName(), searchQueryRequest);
-//                } else if (StringUtils.equals(section, USED_CAR_TYPE)) {
-//                    sectionResult = this.searchUsedCars(index.getName(), searchQueryRequest);
-//                } else if (StringUtils.equals(section, CAR_NEWS_TYPE)) {
-//                    sectionResult = this.searchNews(index.getName(), searchQueryRequest);
-//                } else if (StringUtils.equals(section, NEW_CAR_DEALER_TYPE)) {
-//                    sectionResult = this.searchDealers(index.getName(), searchQueryRequest);
-//                }
-//
-//                if (sectionResult != null) {
-//                    return new AutocompleteResponse(sectionResult, 0);
-//                }
-//            }
-        }
+            queryResponse = queryResponse == null ? new SingleSectionSearchResponse(queryRequest.querySource().query()) : queryResponse;
 
-        queryResponse = queryResponse == null ? new SingleSectionSearchResponse(searchQueryRequest.querySource().query()) : queryResponse;
-
-//        this.cacheService.save(key, queryResponse);
-
-        return queryResponse;
+            return queryResponse;
+        });
     }
 
     // dealer section will come by car name or dealer name only, can be filtered by city

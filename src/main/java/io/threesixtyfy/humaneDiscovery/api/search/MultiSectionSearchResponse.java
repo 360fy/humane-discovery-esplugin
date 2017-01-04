@@ -7,8 +7,8 @@ public class MultiSectionSearchResponse extends QueryResponse<SectionResult> {
 
     public static final SectionResult[] EMPTY = new SectionResult[0];
 
-    public MultiSectionSearchResponse(String searchText) {
-        super(searchText);
+    public MultiSectionSearchResponse() {
+        super();
     }
 
     public MultiSectionSearchResponse(String searchText, SectionResult[] results) {

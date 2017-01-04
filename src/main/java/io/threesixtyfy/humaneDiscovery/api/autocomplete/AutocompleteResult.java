@@ -33,9 +33,7 @@ public class AutocompleteResult extends BaseResult {
     private String type;
     private float score;
 
-    private BytesReference source;
-
-    private Map<String, Object> sourceAsMap;
+    private Map<String, Object> source;
 
     public AutocompleteResult() {
     }
@@ -48,7 +46,7 @@ public class AutocompleteResult extends BaseResult {
         this.id = id;
         this.type = type;
         this.score = score;
-        this.source = source;
+        this.source = sourceAsMap(source);
     }
 
     public String getId() {
@@ -75,25 +73,22 @@ public class AutocompleteResult extends BaseResult {
         this.score = score;
     }
 
-    public BytesReference getSource() {
+    public Map<String, Object> getSource() {
         return source;
     }
 
-    public void setSource(BytesReference source) {
+    public void setSource(Map<String, Object> source) {
         this.source = source;
     }
 
     @SuppressWarnings({"unchecked"})
-    public Map<String, Object> sourceAsMap() throws ElasticsearchParseException {
+    public Map<String, Object> sourceAsMap(BytesReference source) throws ElasticsearchParseException {
         if (source == null) {
             return null;
         }
-        if (sourceAsMap != null) {
-            return sourceAsMap;
-        }
 
-        sourceAsMap = SourceLookup.sourceAsMap(source);
-        return sourceAsMap;
+
+        return SourceLookup.sourceAsMap(source);
     }
 
     @Override
@@ -102,10 +97,7 @@ public class AutocompleteResult extends BaseResult {
         this.type = in.readString();
         this.score = in.readFloat();
 
-        this.source = in.readBytesReference();
-        if (this.source.length() == 0) {
-            this.source = null;
-        }
+        this.source = in.readMap();
     }
 
     @Override
@@ -115,7 +107,7 @@ public class AutocompleteResult extends BaseResult {
         out.writeFloat(this.score);
 
         // write source
-        out.writeBytesReference(source);
+        out.writeMap(this.source);
     }
 
     @Override
@@ -124,7 +116,7 @@ public class AutocompleteResult extends BaseResult {
         builder.field(Fields._ID, this.id);
         builder.field(Fields._SCORE, this.score);
 
-        this.sourceAsMap()
+        this.getSource()
                 .entrySet()
                 .stream()
                 .filter(entry -> {

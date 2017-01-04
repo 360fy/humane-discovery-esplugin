@@ -21,6 +21,6 @@ public class AutocompleteAction extends Action<AutocompleteQueryRequest, QueryRe
 
     @Override
     public QueryResponse newResponse() {
-        return new AutocompleteResponse("");
+        return new AutocompleteResponse();
     }
 }

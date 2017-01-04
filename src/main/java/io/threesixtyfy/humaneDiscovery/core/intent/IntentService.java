@@ -5,6 +5,7 @@ import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.ForestMember;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import io.threesixtyfy.humaneDiscovery.core.tagger.TagBuilder;
+import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.ClusterState;
@@ -14,7 +15,6 @@ import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.indices.IndicesService;
 
-import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Stack;
@@ -34,7 +34,7 @@ public class IntentService {
     private IntentService() {
     }
 
-    public List<TagForest> createIntents(InstanceContext instanceContext, String query, ClusterService clusterService, IndicesService indicesService, Client client, IndexNameExpressionResolver indexNameExpressionResolver) throws IOException {
+    public List<TagForest> createIntents(InstanceContext instanceContext, String query, ClusterService clusterService, IndicesService indicesService, Client client, IndexNameExpressionResolver indexNameExpressionResolver) {
         ClusterState clusterState = clusterService.state();
 
         String tagIndex = instanceContext.getTagIndex();
@@ -42,13 +42,13 @@ public class IntentService {
         Index[] tagIndices = indexNameExpressionResolver.concreteIndices(clusterState, indicesOptions, tagIndex);
 
         if (tagIndices == null || tagIndices.length == 0) {
-            throw new IOException("Tag index is not found for: " + instanceContext.getName());
+            throw new ElasticsearchException("Tag index is not found for: " + instanceContext.getName());
         }
 
         IndexService indexService = indicesService.indexService(tagIndices[0]);
 
         if (indexService == null) {
-            throw new IOException("IndexService is not found for: " + tagIndices[0]);
+            throw new ElasticsearchException("IndexService is not found for: " + tagIndices[0]);
         }
 
         // TODO: build tag scopes

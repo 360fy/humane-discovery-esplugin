@@ -1,6 +1,7 @@
 package io.threesixtyfy.humaneDiscovery.api.intent;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
+import io.threesixtyfy.humaneDiscovery.core.cache.CacheService;
 import io.threesixtyfy.humaneDiscovery.core.instance.CarDekhoInstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import org.apache.logging.log4j.Logger;
@@ -30,16 +31,9 @@ public class TransportIntentAction extends TransportQueryAction<IntentQuerySourc
                                  IndexNameExpressionResolver indexNameExpressionResolver,
                                  ClusterService clusterService,
                                  IndicesService indicesService,
-                                 Client client) {
-        super(settings, IntentAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, IntentQueryRequest::new);
-    }
-
-    private IntentResponse emptyResponse(List<String> tokens, long startTime) {
-        if (tokens == null) {
-            return new IntentResponse("");
-        }
-
-        return new IntentResponse("", tokens.toArray(new String[tokens.size()]));
+                                 Client client,
+                                 CacheService cacheService) {
+        super(settings, IntentAction.NAME, threadPool, transportService, actionFilters, indexNameExpressionResolver, clusterService, indicesService, client, IntentQueryRequest::new, cacheService);
     }
 
     private IntentResponse response(String[] tokens, IntentResult[] intentResults, long startTime) {

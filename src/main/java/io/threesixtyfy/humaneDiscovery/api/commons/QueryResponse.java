@@ -10,6 +10,8 @@ import java.io.IOException;
 
 public abstract class QueryResponse<T extends BaseResult> extends BaseResponse {
 
+//    private static final Logger logger = Loggers.getLogger(QueryResponse.class);
+
     private String searchText;
 
     private T[] results;
@@ -18,12 +20,18 @@ public abstract class QueryResponse<T extends BaseResult> extends BaseResponse {
 
     private long count;
 
-    public QueryResponse(String searchText) {
-        results = emptyResults();
-        this.searchText = searchText;
+    public QueryResponse() {
+        super();
     }
 
+//    public QueryResponse(String searchText) {
+//        this(searchText, emptyResults(), 0);
+//        results = emptyResults();
+//        this.searchText = searchText;
+//    }
+
     public QueryResponse(String searchText, T[] results, long totalResults) {
+        super();
         this.searchText = searchText;
         this.results = results;
         this.totalResults = totalResults;
@@ -99,15 +107,16 @@ public abstract class QueryResponse<T extends BaseResult> extends BaseResponse {
     public void readFrom(StreamInput in) throws IOException {
         super.readFrom(in);
         this.searchText = in.readString();
-        this.count = in.readLong();
-        this.totalResults = in.readLong();
-        int resultsSize = in.readInt();
-        if (resultsSize == 0) {
-            results = emptyResults();
+        this.count = in.readVLong();
+        this.totalResults = in.readVLong();
+        int resultsSize = in.readVInt();
+
+        if (resultsSize <= 0) {
+            this.results = emptyResults();
         } else {
-            results = newResults(resultsSize);
-            for (int i = 0; i < results.length; i++) {
-                results[i] = readResult(in);
+            this.results = newResults(resultsSize);
+            for (int i = 0; i < this.results.length; i++) {
+                this.results[i] = readResult(in);
             }
         }
     }
@@ -116,9 +125,10 @@ public abstract class QueryResponse<T extends BaseResult> extends BaseResponse {
     public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
         out.writeString(this.searchText);
-        out.writeLong(this.count);
-        out.writeLong(this.totalResults);
-        out.writeInt(this.results.length);
+        out.writeVLong(this.count);
+        out.writeVLong(this.totalResults);
+
+        out.writeVInt(this.results.length);
         if (this.results.length > 0) {
             for (T result : results) {
                 result.writeTo(out);

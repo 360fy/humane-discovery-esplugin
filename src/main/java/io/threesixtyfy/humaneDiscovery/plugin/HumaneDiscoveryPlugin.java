@@ -3,6 +3,18 @@ package io.threesixtyfy.humaneDiscovery.plugin;
 import io.threesixtyfy.humaneDiscovery.api.autocomplete.AutocompleteAction;
 import io.threesixtyfy.humaneDiscovery.api.autocomplete.AutocompleteRestAction;
 import io.threesixtyfy.humaneDiscovery.api.autocomplete.TransportAutocompleteAction;
+import io.threesixtyfy.humaneDiscovery.api.intent.IntentAction;
+import io.threesixtyfy.humaneDiscovery.api.intent.IntentRestAction;
+import io.threesixtyfy.humaneDiscovery.api.intent.TransportIntentAction;
+import io.threesixtyfy.humaneDiscovery.api.search.SearchAction;
+import io.threesixtyfy.humaneDiscovery.api.search.SearchRestAction;
+import io.threesixtyfy.humaneDiscovery.api.search.TransportSearchAction;
+import io.threesixtyfy.humaneDiscovery.core.cache.CacheService;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.IndexEventListenerImpl;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.IndexingOperationListenerImpl;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.LifecycleService;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.SharedChannel;
+import io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants;
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneDescriptiveTextAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneEdgeGramQueryAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneKeywordAnalyzerProvider;
@@ -11,19 +23,8 @@ import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneShingleTextAnalyzerProv
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneStandardAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneTextAnalyzerProvider;
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneVernacularAnalyzerProvider;
-import io.threesixtyfy.humaneDiscovery.api.intent.IntentAction;
-import io.threesixtyfy.humaneDiscovery.api.intent.IntentRestAction;
-import io.threesixtyfy.humaneDiscovery.api.intent.TransportIntentAction;
-import io.threesixtyfy.humaneDiscovery.api.search.SearchAction;
-import io.threesixtyfy.humaneDiscovery.api.search.SearchRestAction;
-import io.threesixtyfy.humaneDiscovery.api.search.TransportSearchAction;
 import io.threesixtyfy.humaneDiscovery.es.query.HumaneQueryBuilder;
 import io.threesixtyfy.humaneDiscovery.es.query.MultiHumaneQueryBuilder;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.IndexEventListenerImpl;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.IndexingOperationListenerImpl;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.LifecycleService;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.SharedChannel;
-import io.threesixtyfy.humaneDiscovery.core.tokenIndex.TokenIndexConstants;
 import io.threesixtyfy.humaneDiscovery.es.tokenFilter.EdgeGramTokenFilterFactory;
 import io.threesixtyfy.humaneDiscovery.es.tokenFilter.PrefixTokenFilterFactory;
 import org.apache.logging.log4j.Logger;
@@ -162,6 +163,9 @@ public class HumaneDiscoveryPlugin extends Plugin implements AnalysisPlugin, Act
     public List<Setting<?>> getSettings() {
         List<Setting<?>> settings = new ArrayList<>();
         settings.add(Setting.boolSetting(TokenIndexConstants.TOKEN_INDEX_ENABLED_SETTING, false, Setting.Property.IndexScope));
+        settings.add(Setting.simpleString(CacheService.REDIS_HOST, Setting.Property.NodeScope));
+        settings.add(Setting.simpleString(CacheService.REDIS_KEY_PREFIX, Setting.Property.NodeScope));
+        settings.add(Setting.intSetting(CacheService.REDIS_PORT, CacheService.DEFAULT_REDIS_PORT, Setting.Property.NodeScope));
 
         return settings;
     }

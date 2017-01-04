@@ -2,14 +2,17 @@ package io.threesixtyfy.humaneDiscovery.api.autocomplete;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import org.elasticsearch.action.ShardOperationFailedException;
-import org.elasticsearch.search.SearchHit;
 
 public class AutocompleteResponse extends QueryResponse<AutocompleteResult> {
 
     private static final AutocompleteResult[] EMPTY = new AutocompleteResult[0];
 
+    public AutocompleteResponse() {
+        super();
+    }
+
     public AutocompleteResponse(String searchText) {
-        super(searchText);
+        super(searchText, EMPTY, 0);
     }
 
     public AutocompleteResponse(String searchText, AutocompleteResult[] results, long totalResults) {

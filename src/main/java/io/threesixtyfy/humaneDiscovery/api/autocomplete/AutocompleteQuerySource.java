@@ -24,6 +24,8 @@ import static io.threesixtyfy.humaneDiscovery.api.search.SearchConstants.TYPE_FI
 
 public class AutocompleteQuerySource extends QuerySource<AutocompleteQuerySource> {
 
+    private static final String NAME = "auto";
+
     private int count = DEFAULT_COUNT;
     private int page;
     private String type;
@@ -175,7 +177,7 @@ public class AutocompleteQuerySource extends QuerySource<AutocompleteQuerySource
     @Override
     public String key() {
         if (key == null) {
-            key = Stream.of(this.type(), this.section(), this.query(), this.format(), String.valueOf(this.page()), String.valueOf(this.count()))
+            key = Stream.of(NAME, this.type(), this.section(), this.query(), this.format(), String.valueOf(this.page()), String.valueOf(this.count()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.joining(":"));
         }

@@ -18,9 +18,7 @@ public class SearchResult extends BaseResult {
     private String type;
     private float score;
 
-    private BytesReference source;
-
-    private Map<String, Object> sourceAsMap;
+    private Map<String, Object> source;
 
     public SearchResult() {
     }
@@ -33,7 +31,7 @@ public class SearchResult extends BaseResult {
         this.id = id;
         this.type = type;
         this.score = score;
-        this.source = source;
+        this.source = sourceAsMap(source);
     }
 
     public String getId() {
@@ -60,25 +58,22 @@ public class SearchResult extends BaseResult {
         this.score = score;
     }
 
-    public BytesReference getSource() {
+    public Map<String, Object> getSource() {
         return source;
     }
 
-    public void setSource(BytesReference source) {
+    public void setSource(Map<String, Object> source) {
         this.source = source;
     }
 
     @SuppressWarnings({"unchecked"})
-    public Map<String, Object> sourceAsMap() throws ElasticsearchParseException {
+    public Map<String, Object> sourceAsMap(BytesReference source) throws ElasticsearchParseException {
         if (source == null) {
             return null;
         }
-        if (sourceAsMap != null) {
-            return sourceAsMap;
-        }
 
-        sourceAsMap = SourceLookup.sourceAsMap(source);
-        return sourceAsMap;
+
+        return SourceLookup.sourceAsMap(source);
     }
 
     @Override
@@ -87,10 +82,7 @@ public class SearchResult extends BaseResult {
         this.type = in.readString();
         this.score = in.readFloat();
 
-        this.source = in.readBytesReference();
-        if (this.source.length() == 0) {
-            this.source = null;
-        }
+        this.source = in.readMap();
     }
 
     @Override
@@ -100,7 +92,7 @@ public class SearchResult extends BaseResult {
         out.writeFloat(this.score);
 
         // write source
-        out.writeBytesReference(source);
+        out.writeMap(this.source);
     }
 
     @Override
@@ -109,7 +101,7 @@ public class SearchResult extends BaseResult {
         builder.field(Fields.ID, this.id);
         builder.field(Fields.SCORE, this.score);
 
-        for (Map.Entry<String, Object> entry : this.sourceAsMap().entrySet()) {
+        for (Map.Entry<String, Object> entry : this.getSource().entrySet()) {
             builder.field(entry.getKey(), entry.getValue());
         }
     }

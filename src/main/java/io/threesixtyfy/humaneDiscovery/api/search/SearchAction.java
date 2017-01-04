@@ -21,6 +21,6 @@ public class SearchAction extends Action<SearchQueryRequest, QueryResponse, Sear
 
     @Override
     public QueryResponse newResponse() {
-        return new SingleSectionSearchResponse("");
+        return new SingleSectionSearchResponse();
     }
 }

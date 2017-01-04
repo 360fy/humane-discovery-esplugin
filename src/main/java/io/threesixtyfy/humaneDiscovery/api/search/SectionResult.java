@@ -1,5 +1,6 @@
 package io.threesixtyfy.humaneDiscovery.api.search;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.threesixtyfy.humaneDiscovery.api.commons.BaseResult;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -85,6 +86,7 @@ public class SectionResult extends BaseResult {
     }
 
     @Override
+    @JsonIgnore
     public long getCount() {
         return this.results == null ? 0 : this.results.length;
     }
@@ -96,7 +98,7 @@ public class SectionResult extends BaseResult {
         this.resultType = in.readString();
         this.totalResults = in.readLong();
 
-        int count = in.readInt();
+        int count = in.readVInt();
         this.results = new SearchResult[count];
         for (int i = 0; i < count; i++) {
             this.results[i] = new SearchResult();
@@ -110,7 +112,7 @@ public class SectionResult extends BaseResult {
         out.writeString(this.title);
         out.writeString(this.resultType);
         out.writeLong(this.totalResults);
-        out.writeInt(this.results == null ? 0 : this.results.length);
+        out.writeVInt(this.results == null ? 0 : this.results.length);
 
         if (this.results != null) {
             for (SearchResult searchResult : this.results) {

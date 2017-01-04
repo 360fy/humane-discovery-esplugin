@@ -26,7 +26,6 @@ import org.elasticsearch.search.sort.ScriptSortBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -70,14 +69,14 @@ public class TagBuilder {
         return INSTANCE;
     }
 
-    public List<TagForest> tag(InstanceContext instanceContext, AnalysisService analysisService, Client client, String query) throws IOException {
+    public List<TagForest> tag(InstanceContext instanceContext, AnalysisService analysisService, Client client, String query) {
         long startTime = System.currentTimeMillis();
 
         List<String> tokensList = tokensBuilder.tokens(analysisService, query);
 
         int numTokens = tokensList == null ? 0 : tokensList.size();
 
-        if (numTokens == 0) {
+        if (numTokens == 0 || numTokens > 8) {
             return null;
         }
 

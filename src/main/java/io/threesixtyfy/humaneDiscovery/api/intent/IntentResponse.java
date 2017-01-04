@@ -14,13 +14,8 @@ public class IntentResponse extends QueryResponse<IntentResult> {
 
     private String[] tokens = TOKENS_EMPTY;
 
-    public IntentResponse(String searchText) {
-        super(searchText);
-    }
-
-    public IntentResponse(String searchText, String[] tokens) {
-        this(searchText);
-        this.tokens = tokens;
+    public IntentResponse() {
+        super();
     }
 
     public IntentResponse(String searchText, String[] tokens, IntentResult[] results) {
