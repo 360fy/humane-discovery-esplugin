@@ -124,6 +124,7 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
     private static final String PAGETYPE = "PAGETYPE";
     private static final String PAGE_TYPE_FIELD = "pageType";
     private static final String PAGE_NAME_FIELD = "name";
+    private static final String MODEL_STATUS_FIELD = "modelStatus";
 
     private static Map<String, String> SectionTitles = new HashMap<>();
     private static Map<String, String> NewCarFields = new HashMap<>();
@@ -755,7 +756,8 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
                 NEW_CAR_SECTION,
                 () -> this.newCarsTypes(carNameType, pageType),
                 SortBuilders::scoreSort,
-                () -> SortBuilders.scriptSort(new Script(SORT_BY_NEW_CAR_TYPE_SCRIPT), ScriptSortBuilder.ScriptSortType.NUMBER));
+                () -> SortBuilders.scriptSort(new Script(SORT_BY_NEW_CAR_TYPE_SCRIPT), ScriptSortBuilder.ScriptSortType.NUMBER),
+                () -> SortBuilders.fieldSort(MODEL_STATUS_FIELD));
     }
 
     private SectionResult searchUsedCarsByCarName(String indexName, SearchQueryRequest searchQueryRequest, CarNameType carNameType, List<ForestMember> carNames) {

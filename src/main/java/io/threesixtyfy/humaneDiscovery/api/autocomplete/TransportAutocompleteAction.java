@@ -2,7 +2,6 @@ package io.threesixtyfy.humaneDiscovery.api.autocomplete;
 
 import io.threesixtyfy.humaneDiscovery.api.commons.QueryResponse;
 import io.threesixtyfy.humaneDiscovery.api.commons.TransportQueryAction;
-import io.threesixtyfy.humaneDiscovery.api.search.SingleSectionSearchResponse;
 import io.threesixtyfy.humaneDiscovery.core.cache.CacheService;
 import io.threesixtyfy.humaneDiscovery.core.instance.InstanceContext;
 import io.threesixtyfy.humaneDiscovery.core.tag.BaseTag;
@@ -80,6 +79,8 @@ public class TransportAutocompleteAction extends TransportQueryAction<Autocomple
     private static final String MODEL_INTENT = MODEL_FIELD;
     private static final String VARIANT_FIELD = "variant";
     private static final String VARIANT_INTENT = VARIANT_FIELD;
+
+    private static final String MODEL_STATUS_FIELD = "modelStatus";
 
     private static final String SORT_BY_NEW_CAR_TYPE_SCRIPT = "doc['_type'].value == 'new_car_model_page' || doc['_type'].value == 'new_car_variant_page' ? 0 : (doc['_type'].value == 'new_car_brand' ? 1 : (doc['_type'].value == 'new_car_model' ? 2 : 3))";
     private static final String[] INCLUDED_FIELDS = {
@@ -351,7 +352,8 @@ public class TransportAutocompleteAction extends TransportQueryAction<Autocomple
                 NEW_CAR_SECTION,
                 () -> this.newCarsTypes(carNameType),
                 SortBuilders::scoreSort,
-                () -> SortBuilders.scriptSort(new Script(SORT_BY_NEW_CAR_TYPE_SCRIPT), ScriptSortBuilder.ScriptSortType.NUMBER));
+                () -> SortBuilders.scriptSort(new Script(SORT_BY_NEW_CAR_TYPE_SCRIPT), ScriptSortBuilder.ScriptSortType.NUMBER),
+                () -> SortBuilders.fieldSort(MODEL_STATUS_FIELD));
     }
 
     @SafeVarargs
