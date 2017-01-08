@@ -42,7 +42,8 @@ public class TokenIndexer extends Thread {
     private final BulkProcessor bulk;
     private final Client client;
 
-    private final EdgeGramEncodingUtils edgeGramEncodingUtils = new EdgeGramEncodingUtils();
+    // we keep edgeGram size as 1
+    private final EdgeGramEncodingUtils edgeGramEncodingUtils = new EdgeGramEncodingUtils(1);
     private final EncodingUtils encodingUtils = new EncodingUtils();
 
     private final ConcurrentHashMap<String, TokenInfo> aggregatedTokenInfo = new ConcurrentHashMap<>();

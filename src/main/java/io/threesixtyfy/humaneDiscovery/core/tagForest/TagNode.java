@@ -11,7 +11,7 @@ public class TagNode extends ForestMember {
     private static final Logger logger = Loggers.getLogger(TagNode.class);
 
     private final String inputToken;
-    private final String matchedToken;
+    private final TokenMatch matchedToken;
 
     public TagNode(MatchSet matchSet) {
         super(matchSet.getMatchLevel(), matchSet.getScore(), matchSet.getWeight(), matchSet.getTags());
@@ -24,7 +24,7 @@ public class TagNode extends ForestMember {
         return inputToken;
     }
 
-    public String getMatchedToken() {
+    public TokenMatch getMatchedToken() {
         return matchedToken;
     }
 
@@ -47,9 +47,9 @@ public class TagNode extends ForestMember {
             return false;
         }
 
-        String matchedTokenInMatchSet = matchSet.getMatchedTokens().get(0);
+        TokenMatch matchedTokenInMatchSet = matchSet.getMatchedTokens().get(0);
 
-        return StringUtils.equals(this.matchedToken, matchedTokenInMatchSet);
+        return this.matchedToken.equals(matchedTokenInMatchSet);
     }
 
     // this graph is fully contained by match set
@@ -69,8 +69,8 @@ public class TagNode extends ForestMember {
     @Override
     public boolean matchContainedBy(MatchSet matchSet) {
         boolean found = false;
-        for (String matchedTokenInMatchSet : matchSet.getMatchedTokens()) {
-            if (StringUtils.equals(this.matchedToken, matchedTokenInMatchSet)) {
+        for (TokenMatch matchedTokenInMatchSet : matchSet.getMatchedTokens()) {
+            if (this.matchedToken.equals(matchedTokenInMatchSet)) {
                 found = true;
                 break;
             }
@@ -81,8 +81,8 @@ public class TagNode extends ForestMember {
 
     @Override
     public boolean intersect(MatchSet matchSet) {
-        for (String inputTokenInMatchSet : matchSet.getMatchedTokens()) {
-            if (StringUtils.equals(this.inputToken, inputTokenInMatchSet)) {
+        for (TokenMatch inputTokenInMatchSet : matchSet.getMatchedTokens()) {
+            if (this.inputToken.equals(inputTokenInMatchSet.getInputToken())) {
                 return true;
             }
         }

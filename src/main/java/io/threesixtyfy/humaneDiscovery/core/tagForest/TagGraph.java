@@ -7,7 +7,7 @@ import java.util.List;
 public class TagGraph extends ForestMember {
 
     private final List<String> inputTokens;
-    private final List<String> matchedTokens;
+    private final List<TokenMatch> matchedTokens;
 
     public TagGraph(MatchSet matchSet) {
         super(matchSet.getMatchLevel(), matchSet.getScore(), matchSet.getWeight(), matchSet.getTags());
@@ -20,14 +20,14 @@ public class TagGraph extends ForestMember {
         return inputTokens;
     }
 
-    public List<String> getMatchedTokens() {
+    public List<TokenMatch> getMatchedTokens() {
         return matchedTokens;
     }
 
     // matchSet is fully contained by this graph
     @Override
     public boolean containsMatched(MatchSet matchSet) {
-        for (String matchedTokenInMatchSet : matchSet.getMatchedTokens()) {
+        for (TokenMatch matchedTokenInMatchSet : matchSet.getMatchedTokens()) {
             // find any non matching matched token of the match set
             if (!matchedTokens.contains(matchedTokenInMatchSet)) {
                 return false;
@@ -65,7 +65,7 @@ public class TagGraph extends ForestMember {
 
     @Override
     public boolean matchContainedBy(MatchSet matchSet) {
-        for (String matched : matchedTokens) {
+        for (TokenMatch matched : matchedTokens) {
             // find any non matching matched token in this tag graph
             if (!matchSet.getMatchedTokens().contains(matched)) {
                 return false;

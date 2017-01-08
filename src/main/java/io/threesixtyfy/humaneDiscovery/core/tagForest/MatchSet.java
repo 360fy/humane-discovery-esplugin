@@ -10,11 +10,11 @@ public class MatchSet extends ComparableMatch {
 
     private final int size;
     private final List<String> inputTokens;
-    private final List<String> matchedTokens;
+    private final List<TokenMatch> matchedTokens;
     private final Collection<BaseTag> tags;
     private final int totalResultTokens;
 
-    public MatchSet(List<String> inputTokens, List<String> matchedTokens, MatchLevel matchLevel, float score, float weight, Collection<BaseTag> tags, int totalResultTokens) {
+    public MatchSet(List<String> inputTokens, List<TokenMatch> matchedTokens, MatchLevel matchLevel, float score, float weight, Collection<BaseTag> tags, int totalResultTokens) {
         super(matchLevel, score, weight);
         this.size = matchedTokens.size();
         this.inputTokens = inputTokens;
@@ -27,7 +27,7 @@ public class MatchSet extends ComparableMatch {
         return inputTokens;
     }
 
-    public List<String> getMatchedTokens() {
+    public List<TokenMatch> getMatchedTokens() {
         return matchedTokens;
     }
 

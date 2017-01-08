@@ -10,9 +10,11 @@ import io.threesixtyfy.humaneDiscovery.core.tag.KeywordTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.NGramTag;
 import io.threesixtyfy.humaneDiscovery.core.tag.TagType;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.ForestMember;
+import io.threesixtyfy.humaneDiscovery.core.tagForest.MatchLevel;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagForest;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagGraph;
 import io.threesixtyfy.humaneDiscovery.core.tagForest.TagNode;
+import io.threesixtyfy.humaneDiscovery.core.tagForest.TokenMatch;
 import io.threesixtyfy.humaneDiscovery.es.analyzer.HumaneStandardAnalyzerProvider;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
@@ -452,12 +454,21 @@ public class TransportSearchAction extends TransportQueryAction<SearchQuerySourc
         return QueryBuilders.constantScoreQuery(QueryBuilders.termQuery(field, token));
     }
 
-    // TODO: do we need to query anything special for edge grams
-    // TODO: do we need to query anything special for shingles
-    private QueryBuilder fieldQuery(String field, List<String> tokens) {
+    private QueryBuilder fieldQuery(String field, TokenMatch token) {
+        // TODO: do we need to query anything special for edge grams
+        // TODO: do we need to query anything special for shingles
+        // TODO: if token is edgeGram then make an edgeGram query
+        if (token.getMatchLevel() == MatchLevel.EdgeGram || token.getMatchLevel() == MatchLevel.EdgeGramPhonetic) {
+            return QueryBuilders.constantScoreQuery(QueryBuilders.termQuery(field.concat(".humane"), "e#" + token.getMatchedToken()));
+        }
+
+        return QueryBuilders.constantScoreQuery(QueryBuilders.termQuery(field, token.getMatchedToken()));
+    }
+
+    private QueryBuilder fieldQuery(String field, List<TokenMatch> tokens) {
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
 
-        for (String token : tokens) {
+        for (TokenMatch token : tokens) {
             boolQueryBuilder.must(fieldQuery(field, token));
         }
 

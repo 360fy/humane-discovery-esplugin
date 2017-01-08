@@ -251,6 +251,7 @@ public class TagBuilder {
 
     // TODO: would multi-search be more optimised here
     // TODO: use caching here
+    // TODO: use lazy multi-search
     private List<SearchHit[]> matchConjuncts(InstanceContext instanceContext, Client client, List<List<String>> conjuncts) {
 
         List<SearchHit[]> searchHitsList = new ArrayList<>();
@@ -318,16 +319,20 @@ public class TagBuilder {
                     // is match fully contained too...
                     // if not, then we check for scores
                     if (found) {
-                        if (/*!forestMember.containsMatched(matchSet)
-                                && */forestMember.compareTo(matchSet) > 0) {
+                        // if same match set too, then we simply merge tags
+                        if (forestMember.inputContainedBy(matchSet) && forestMember.containsMatched(matchSet) && forestMember.matchContainedBy(matchSet)) {
+                            // do we need to merge tags here
+                            forestMember.mergeTags(matchSet);
+
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("After merging tags {}", forestMember);
+                            }
+                        } else if (!forestMember.containsMatched(matchSet) && forestMember.compareTo(matchSet) > 0) {
                             // we replace here
                             if (logger.isDebugEnabled()) {
                                 logger.debug("Replacing Forest Member {} with better matchSet {}", forestMember, matchSet);
                             }
                             tagForest.replace(forestMember, matchSet);
-                        } else if (forestMember.inputContainedBy(matchSet) && forestMember.containsMatched(matchSet) && forestMember.matchContainedBy(matchSet)) {
-                            // do we need to merge tags here
-                            forestMember.mergeTags(matchSet);
                         } else {
                             if (logger.isDebugEnabled()) {
                                 logger.debug("TagForest {} already contains better matchSet {} --> not adding", forestMember, matchSet);
@@ -434,7 +439,7 @@ public class TagBuilder {
             // does resultToken match some exact 'token' in input
             if (StringUtils.startsWith(resultToken, token)) {
                 float scoreNormaliser = resultToken.length() - token.length() + 1;
-                return new TokenMatch(token, resultToken, MatchLevel.EdgeGram, EDGE_GRAM_MATCH_SCORE / scoreNormaliser);
+                return new TokenMatch(token, token, MatchLevel.EdgeGram, EDGE_GRAM_MATCH_SCORE / scoreNormaliser);
             }
         }
 
@@ -443,6 +448,7 @@ public class TagBuilder {
 
     private TokenMatch phoneticMatch(List<String> inputTokens, String resultToken, boolean noEdgeGramMatch, float phoneticThreshold) {
         String bestInputToken = null;
+        String bestMatchedToken = null;
         float bestScore = 0.0f;
 
         int resultTokenLength = resultToken.length();
@@ -477,6 +483,7 @@ public class TagBuilder {
                         if (score <= 0.0f || bestScore < score) {
                             bestScore = score;
                             bestInputToken = inputToken;
+                            bestMatchedToken = newResultToken;
                             edgeGram = newResultTokenLength < resultTokenLength;
                         }
                     }
@@ -499,6 +506,7 @@ public class TagBuilder {
                     float score = 1.0f - (dmDistance / 100.0f);
                     if (score <= 0.0f || bestScore < score) {
                         bestScore = score;
+                        bestMatchedToken = resultToken;
                         bestInputToken = inputToken;
                     }
                 }
@@ -506,7 +514,7 @@ public class TagBuilder {
         }
 
         if (bestInputToken != null) {
-            return new TokenMatch(bestInputToken, resultToken, edgeGram ? MatchLevel.EdgeGramPhonetic : MatchLevel.Phonetic, bestScore);
+            return new TokenMatch(bestInputToken, bestMatchedToken, edgeGram ? MatchLevel.EdgeGramPhonetic : MatchLevel.Phonetic, bestScore);
         }
 
         return null;
@@ -538,6 +546,7 @@ public class TagBuilder {
         return tokenMatch;
     }
 
+    // TODO: if some input token has already been matched with a resultToken at higher match level, then do not proceed to compare at lower match level
     private MatchSet buildTokenMatches(InstanceContext instanceContext, List<String> tokens, SearchHit searchHit) {
         List<String> resultTokens = SearchHitUtils.fieldValue(searchHit, TOKENS);
         List<Map<String, Object>> tagData = SearchHitUtils.fieldValue(searchHit, TAGS);
@@ -591,12 +600,12 @@ public class TagBuilder {
         int matchCode = 0;
 
         List<String> inputTokens = new ArrayList<>();
-        List<String> matchedTokens = new ArrayList<>();
+//        List<String> matchedTokens = new ArrayList<>();
         for (TokenMatch match : matches) {
             score *= match.getScore();
             matchCode = Math.max(matchCode, match.getMatchLevel().getCode());
             inputTokens.add(match.getInputToken());
-            matchedTokens.add(match.getMatchedToken());
+//            matchedTokens.add(match.getMatchedToken());
         }
 
 //        score = score * size / totalResultTokens;
@@ -606,7 +615,7 @@ public class TagBuilder {
             weight = tags.first().getWeight();
         }
 
-        return new MatchSet(inputTokens, matchedTokens, MatchLevel.byCode(matchCode), score, weight, tags, totalResultTokens);
+        return new MatchSet(inputTokens, matches, MatchLevel.byCode(matchCode), score, weight, tags, totalResultTokens);
     }
 
     private MatchSet buildJoinedTokenMatches(InstanceContext instanceContext, List<String> inputTokens, SearchHit searchHit) {
@@ -646,7 +655,13 @@ public class TagBuilder {
             weight = tags.first().getWeight();
         }
 
-        return new MatchSet(inputTokens, resultTokens, tokenMatch.getMatchLevel(), score, weight, tags, resultTokens.size());
+        List<TokenMatch> tokenMatchList = new ArrayList<>();
+
+        for (String resultToken : resultTokens) {
+            tokenMatchList.add(new TokenMatch(joinedInputToken, resultToken, tokenMatch.getMatchLevel(), score));
+        }
+
+        return new MatchSet(inputTokens, tokenMatchList, tokenMatch.getMatchLevel(), score, weight, tags, resultTokens.size());
     }
 
     private MatchSet bestMatchSet(MatchSet one, MatchSet two) {
